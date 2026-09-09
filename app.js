@@ -212,14 +212,14 @@
     emptyState.innerHTML = hasClass ? `
       <div class="empty-state-content">
         <p>No students yet in this class.</p>
-        <p>Click <strong>Roster</strong> to add students — type a name, paste a list, or upload a .csv/.txt file — then tap their tile here to start a timer when they head out.</p>
+        <p>Click <strong>Roster</strong> to add students — type a name, or paste a list — then tap their tile here to start a timer when they head out.</p>
       </div>
     ` : `
       <div class="empty-state-content">
         <h2>Welcome to Tappy</h2>
         <ol>
           <li>Click <strong>+ Create Class</strong> to set up your first class.</li>
-          <li>Click <strong>Roster</strong> to add students — type names one at a time, or paste/upload a list.</li>
+          <li>Click <strong>Roster</strong> to add students — type names one at a time, or paste a list.</li>
           <li>Tap a student's tile to start their timer when they leave the room; tap again when they return.</li>
           <li>Click <strong>Report</strong> anytime for today's totals, and <strong>Reset Day</strong> to clear timers for tomorrow.</li>
         </ol>
@@ -482,15 +482,6 @@
     const textEl = document.getElementById("input-import");
     const added = importList(textEl.value);
     if (added) textEl.value = "";
-  });
-
-  document.getElementById("input-import-file").addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => importList(String(reader.result));
-    reader.readAsText(file);
-    e.target.value = "";
   });
 
   document.getElementById("btn-clear-roster").addEventListener("click", () => {
