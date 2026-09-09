@@ -1,5 +1,5 @@
 // Bump this on every deploy so clients pick up new files instead of stale cache.
-const CACHE_NAME = "tappy-cache-v13";
+const CACHE_NAME = "tappy-cache-v14";
 const PRECACHE_URLS = [
   "./",
   "./index.html",

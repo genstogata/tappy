@@ -7,6 +7,7 @@
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
+  const APP_VERSION = "v14"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -624,6 +625,7 @@
   renderClassUI();
   renderGrid();
   renderRosterList();
+  document.getElementById("app-version").textContent = APP_VERSION;
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
