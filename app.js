@@ -627,7 +627,22 @@
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("service-worker.js").catch(() => {});
+      navigator.serviceWorker.register("service-worker.js").then((reg) => {
+        // This app is often left open all day on a classroom device without navigating away,
+        // so proactively re-check for updates instead of waiting on the browser's own throttling.
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") reg.update().catch(() => {});
+        });
+        setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+      }).catch(() => {});
+    });
+    // The new SW activates immediately (skipWaiting + clients.claim), but an already-open
+    // tab is still running old HTML/JS in memory until it reloads — do that once automatically.
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
     });
   }
 })();
