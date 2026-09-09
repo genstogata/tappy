@@ -338,6 +338,22 @@ textarea#input-import {
 #report-table tbody tr.row-danger { color: #c92a2a; font-weight: 600; }
 #report-table tbody tr.row-warn { color: #a17c00; font-weight: 600; }
 
+.btn-details-toggle {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--tile-border);
+  background: #f8f9fb;
+  cursor: pointer;
+}
+
+.session-detail-list {
+  margin: 4px 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 @media print {
   body * { visibility: hidden; }
   #modal-report, #modal-report * { visibility: visible; }
@@ -349,6 +365,9 @@ textarea#input-import {
     box-shadow: none;
   }
   #btn-export-csv, #btn-print, .modal-actions button[value="close"] { display: none; }
+  /* Always show the full timestamp log on paper, regardless of on-screen expand/collapse state. */
+  .col-details { display: none; }
+  #report-table tr.detail-row[hidden] { display: table-row !important; }
 }
 
 .app-footer {

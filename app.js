@@ -104,6 +104,11 @@
     return student.activeStart ? (Date.now() - student.activeStart) : 0;
   }
 
+  // Local wall-clock time (not just elapsed duration) so a teacher can confirm the device's clock is correct.
+  function formatClockTime(ms) {
+    return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  }
+
   function totalFor(student) {
     return student.totalMs + elapsedFor(student);
   }
@@ -506,11 +511,22 @@
     return new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   }
 
+  // Renders each tap-out/tap-in pair as local clock times, e.g. "Out at 1:45:02 PM → In at 1:52:30 PM (7:28)".
+  function sessionDetailHtml(student) {
+    const items = student.sessions.map((sess, i) =>
+      `<li>#${i + 1}: Out at ${formatClockTime(sess.start)} → In at ${formatClockTime(sess.end)} (${formatDuration(sess.end - sess.start)})</li>`
+    );
+    if (student.activeStart) {
+      items.push(`<li>#${student.sessions.length + 1}: Out at ${formatClockTime(student.activeStart)} → still out</li>`);
+    }
+    return items.length ? `<ul class="session-detail-list">${items.join("")}</ul>` : `<span class="hint">No sessions recorded.</span>`;
+  }
+
   function renderReport() {
     const cls = activeClass();
     if (!cls) return;
     reportBody.innerHTML = "";
-    reportMeta.textContent = `${cls.name} — ${reportDateStr()}`;
+    reportMeta.textContent = `${cls.name} — ${reportDateStr()} — Current time: ${formatClockTime(Date.now())}`;
     const list = [...cls.students].sort((a, b) => totalFor(b) - totalFor(a));
     for (const student of list) {
       const tr = document.createElement("tr");
@@ -524,8 +540,22 @@
         <td>${student.sessions.length}</td>
         <td>${student.activeStart ? formatDuration(elapsed) : "—"}</td>
         <td>${formatDuration(totalFor(student))}</td>
+        <td class="col-details"><button type="button" class="btn-details-toggle" aria-expanded="false">Details ▾</button></td>
       `;
       reportBody.appendChild(tr);
+
+      const detailTr = document.createElement("tr");
+      detailTr.className = "detail-row";
+      detailTr.hidden = true;
+      detailTr.innerHTML = `<td colspan="5">${sessionDetailHtml(student)}</td>`;
+      reportBody.appendChild(detailTr);
+
+      tr.querySelector(".btn-details-toggle").addEventListener("click", (e) => {
+        const willExpand = detailTr.hidden;
+        detailTr.hidden = !willExpand;
+        e.currentTarget.setAttribute("aria-expanded", String(willExpand));
+        e.currentTarget.textContent = willExpand ? "Details ▴" : "Details ▾";
+      });
     }
   }
 
@@ -550,18 +580,24 @@
     const rows = [
       ["Class", cls.name],
       ["Date", reportDateStr()],
+      ["Report Generated At", formatClockTime(Date.now())],
       [],
-      ["Name", "Times Out", "Currently Out (sec)", "Total Time Out (sec)", "Total Time Out"]
+      ["Name", "Times Out", "Currently Out (sec)", "Total Time Out (sec)", "Total Time Out", "Session Log (local time)"]
     ];
     const list = [...cls.students].sort((a, b) => totalFor(b) - totalFor(a));
     for (const student of list) {
       const total = totalFor(student);
+      const sessionLog = student.sessions
+        .map(sess => `Out ${formatClockTime(sess.start)} - In ${formatClockTime(sess.end)}`)
+        .concat(student.activeStart ? [`Out ${formatClockTime(student.activeStart)} - still out`] : [])
+        .join("; ");
       rows.push([
         `${student.first} ${student.last}`,
         student.sessions.length,
         student.activeStart ? Math.floor(elapsedFor(student) / 1000) : 0,
         Math.floor(total / 1000),
-        formatDuration(total)
+        formatDuration(total),
+        sessionLog
       ]);
     }
     const csv = rows.map(r => r.map(v => `"${sanitizeCsvField(v).replace(/"/g, '""')}"`).join(",")).join("\n");
