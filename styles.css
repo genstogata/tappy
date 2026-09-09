@@ -364,6 +364,10 @@ textarea#input-import {
     max-height: none;
     box-shadow: none;
   }
+  #modal-report .modal-content {
+    max-height: none;
+    overflow: visible;
+  }
   #btn-export-csv, #btn-print, .modal-actions button[value="close"] { display: none; }
   /* Always show the full timestamp log on paper, regardless of on-screen expand/collapse state. */
   .col-details { display: none; }
