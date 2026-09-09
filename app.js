@@ -1,0 +1,510 @@
+(() => {
+  "use strict";
+
+  const STORAGE_KEY = "tappy.app.v2";
+  const LEGACY_STORAGE_KEY = "tappy.students.v1"; // single-roster format from before multi-class support
+  const MAX_CLASSES = 5;
+  const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
+  const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
+  const GRID_GAP = 8;
+
+  /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
+  /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
+
+  /** @type {{activeClassId:string, classes:ClassRoster[]}} */
+  let state = { activeClassId: "", classes: [] };
+
+  function activeClass() {
+    return state.classes.find(c => c.id === state.activeClassId) || state.classes[0];
+  }
+
+  function makeClass(name, students) {
+    return { id: uid(), name, students: students || [] };
+  }
+
+  // ---------- Persistence ----------
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        state = JSON.parse(raw);
+      } else {
+        const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+        const legacyStudents = legacyRaw ? JSON.parse(legacyRaw) : [];
+        const first = makeClass("Class 1", legacyStudents);
+        state = { activeClassId: first.id, classes: [first] };
+      }
+    } catch (e) {
+      console.error("Failed to load app state", e);
+      state = { activeClassId: "", classes: [] };
+    }
+    if (!state.classes || state.classes.length === 0) {
+      const first = makeClass("Class 1", []);
+      state = { activeClassId: first.id, classes: [first] };
+    }
+    if (!activeClass()) {
+      state.activeClassId = state.classes[0].id;
+    }
+  }
+
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function uid() {
+    return (crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  }
+
+  // ---------- Helpers ----------
+  function formatDuration(ms) {
+    const totalSec = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) {
+      return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+
+  function elapsedFor(student) {
+    return student.activeStart ? (Date.now() - student.activeStart) : 0;
+  }
+
+  function totalFor(student) {
+    return student.totalMs + elapsedFor(student);
+  }
+
+  function sortedStudents() {
+    return [...activeClass().students].sort((a, b) => {
+      const ln = a.last.localeCompare(b.last);
+      if (ln !== 0) return ln;
+      return a.first.localeCompare(b.first);
+    });
+  }
+
+  // ---------- Grid rendering & responsive fit ----------
+  const grid = document.getElementById("grid");
+  const emptyState = document.getElementById("empty-state");
+  const tileEls = new Map(); // id -> element
+
+  function renderGrid() {
+    grid.querySelectorAll(".tile").forEach(el => el.remove());
+    tileEls.clear();
+
+    const list = sortedStudents();
+    emptyState.style.display = list.length === 0 ? "flex" : "none";
+
+    for (const student of list) {
+      const tile = document.createElement("div");
+      tile.className = "tile";
+      tile.dataset.id = student.id;
+      tile.setAttribute("role", "button");
+      tile.setAttribute("tabindex", "0");
+      tile.innerHTML = `
+        <div class="name">
+          <div class="name-line">${escapeHtml(student.first)}</div>
+          <div class="name-line">${escapeHtml(student.last)}</div>
+        </div>
+        <div class="timer">00:00</div>
+        <div class="sub"></div>
+      `;
+      tile.addEventListener("click", () => toggleStudent(student.id));
+      tile.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleStudent(student.id);
+        }
+      });
+      grid.appendChild(tile);
+      tileEls.set(student.id, tile);
+    }
+
+    layoutGrid(list);
+    tick(); // immediately reflect current state
+  }
+
+  function layoutGrid(list) {
+    const n = list.length;
+    if (n === 0) return;
+    const rect = grid.getBoundingClientRect();
+    const w = rect.width - GRID_GAP;
+    const h = rect.height - GRID_GAP;
+
+    let best = { cols: 1, rows: n, tileW: w, tileH: h, size: 0 };
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      const tileW = (w - GRID_GAP * (cols - 1)) / cols;
+      const tileH = (h - GRID_GAP * (rows - 1)) / rows;
+      const size = Math.min(tileW, tileH);
+      if (size > best.size) best = { cols, rows, tileW, tileH, size };
+    }
+
+    grid.style.gridTemplateColumns = `repeat(${best.cols}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${best.rows}, 1fr)`;
+
+    const baseFontSize = Math.max(11, Math.min(48, best.size * 0.24));
+    grid.style.setProperty("--name-size", `${baseFontSize}px`);
+
+    // Shrink each tile's own name to fit its longest line, so long names stay whole instead of truncating.
+    const innerWidth = (best.tileW - 16) * 0.92; // safety margin for font-metric estimation differences
+    for (const student of list) {
+      const tile = tileEls.get(student.id);
+      if (!tile) continue;
+      const longest = student.first.length >= student.last.length ? student.first : student.last;
+      const neededWidth = measureTextWidth(longest, baseFontSize);
+      const fitSize = neededWidth > innerWidth ? Math.max(9, baseFontSize * (innerWidth / neededWidth)) : baseFontSize;
+      tile.style.setProperty("--tile-name-size", `${fitSize}px`);
+    }
+  }
+
+  const measureCanvas = document.createElement("canvas");
+  const measureCtx = measureCanvas.getContext("2d");
+  function measureTextWidth(text, fontPx) {
+    measureCtx.font = `600 ${fontPx}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+    return measureCtx.measureText(text).width;
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  // ---------- Timer tick ----------
+  function tick() {
+    for (const student of activeClass().students) {
+      const tile = tileEls.get(student.id);
+      if (!tile) continue;
+
+      tile.classList.remove("tile-active", "tile-warn", "tile-danger");
+
+      const timerEl = tile.querySelector(".timer");
+      const subEl = tile.querySelector(".sub");
+
+      if (student.activeStart) {
+        const elapsed = elapsedFor(student);
+        timerEl.textContent = formatDuration(elapsed);
+        tile.classList.add("tile-active");
+        if (elapsed >= DANGER_MS) tile.classList.add("tile-danger");
+        else if (elapsed >= WARN_MS) tile.classList.add("tile-warn");
+        subEl.classList.remove("visible");
+      } else {
+        subEl.classList.toggle("visible", student.totalMs > 0);
+        if (student.totalMs > 0) {
+          subEl.textContent = `Today: ${formatDuration(student.totalMs)}`;
+        }
+      }
+    }
+  }
+
+  setInterval(tick, 1000);
+
+  // ---------- Actions ----------
+  function toggleStudent(id) {
+    const student = activeClass().students.find(s => s.id === id);
+    if (!student) return;
+
+    if (student.activeStart) {
+      const start = student.activeStart;
+      const end = Date.now();
+      student.totalMs += (end - start);
+      student.sessions.push({ start, end });
+      student.activeStart = null;
+    } else {
+      student.activeStart = Date.now();
+    }
+    save();
+    tick();
+  }
+
+  function addStudent(first, last) {
+    first = first.trim();
+    last = last.trim();
+    if (!first && !last) return;
+    activeClass().students.push({ id: uid(), first, last, activeStart: null, totalMs: 0, sessions: [] });
+    save();
+    renderGrid();
+    renderRosterList();
+  }
+
+  function removeStudent(id) {
+    const cls = activeClass();
+    cls.students = cls.students.filter(s => s.id !== id);
+    save();
+    renderGrid();
+    renderRosterList();
+  }
+
+  function parseImportLine(line) {
+    line = line.trim();
+    if (!line) return null;
+    if (line.includes(",")) {
+      const [last, first] = line.split(",").map(s => s.trim());
+      return { first: first || "", last: last || "" };
+    }
+    const parts = line.split(/\s+/);
+    if (parts.length === 1) return { first: parts[0], last: "" };
+    const last = parts.pop();
+    return { first: parts.join(" "), last };
+  }
+
+  function importList(text) {
+    const cls = activeClass();
+    const lines = text.split(/\r?\n/);
+    let added = 0;
+    for (const line of lines) {
+      const parsed = parseImportLine(line);
+      if (parsed && (parsed.first || parsed.last)) {
+        cls.students.push({ id: uid(), first: parsed.first, last: parsed.last, activeStart: null, totalMs: 0, sessions: [] });
+        added++;
+      }
+    }
+    if (added) {
+      save();
+      renderGrid();
+      renderRosterList();
+    }
+    return added;
+  }
+
+  function resetDay() {
+    for (const student of activeClass().students) {
+      student.activeStart = null;
+      student.totalMs = 0;
+      student.sessions = [];
+    }
+    save();
+    renderGrid();
+  }
+
+  function clearRoster() {
+    activeClass().students = [];
+    save();
+    renderGrid();
+    renderRosterList();
+  }
+
+  // ---------- Class management ----------
+  function createClass(name) {
+    if (state.classes.length >= MAX_CLASSES) return null;
+    const cls = makeClass(name, []);
+    state.classes.push(cls);
+    state.activeClassId = cls.id;
+    save();
+    renderClassUI();
+    renderGrid();
+    renderRosterList();
+    return cls;
+  }
+
+  function switchClass(id) {
+    if (!state.classes.some(c => c.id === id) || id === state.activeClassId) return;
+    state.activeClassId = id;
+    save();
+    renderClassUI();
+    renderGrid();
+    renderRosterList();
+  }
+
+  function deleteActiveClass() {
+    if (state.classes.length <= 1) return;
+    const idx = state.classes.findIndex(c => c.id === state.activeClassId);
+    state.classes.splice(idx, 1);
+    state.activeClassId = state.classes[Math.max(0, idx - 1)].id;
+    save();
+    renderClassUI();
+    renderGrid();
+    renderRosterList();
+  }
+
+  // ---------- Roster modal ----------
+  const modalRoster = document.getElementById("modal-roster");
+  const rosterList = document.getElementById("roster-list");
+  const rosterCount = document.getElementById("roster-count");
+
+  function renderRosterList() {
+    rosterList.innerHTML = "";
+    rosterCount.textContent = activeClass().students.length;
+    for (const student of sortedStudents()) {
+      const li = document.createElement("li");
+      li.innerHTML = `<span>${escapeHtml(student.first)} ${escapeHtml(student.last)}</span>`;
+      const btn = document.createElement("button");
+      btn.className = "remove-btn";
+      btn.type = "button";
+      btn.textContent = "Remove";
+      btn.addEventListener("click", () => removeStudent(student.id));
+      li.appendChild(btn);
+      rosterList.appendChild(li);
+    }
+  }
+
+  document.getElementById("btn-roster").addEventListener("click", () => {
+    renderRosterList();
+    modalRoster.showModal();
+  });
+
+  const modalCreateClass = document.getElementById("modal-create-class");
+  const inputNewClassName = document.getElementById("input-new-class-name");
+
+  document.getElementById("btn-create-class").addEventListener("click", () => {
+    if (state.classes.length >= MAX_CLASSES) return;
+    inputNewClassName.value = `Class ${state.classes.length + 1}`;
+    modalCreateClass.showModal();
+    inputNewClassName.focus();
+    inputNewClassName.select();
+  });
+
+  inputNewClassName.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("btn-create-class-confirm").click();
+    }
+  });
+
+  modalCreateClass.addEventListener("close", () => {
+    if (modalCreateClass.returnValue !== "create") return;
+    const trimmed = inputNewClassName.value.trim();
+    if (trimmed) createClass(trimmed);
+  });
+
+  document.getElementById("btn-delete-class").addEventListener("click", () => {
+    if (state.classes.length <= 1) return;
+    if (confirm(`Delete "${activeClass().name}" and all its tracked data? This cannot be undone.`)) {
+      deleteActiveClass();
+    }
+  });
+
+  // ---------- Class dropdown ----------
+  const classSelect = document.getElementById("class-select");
+
+  function renderClassUI() {
+    classSelect.innerHTML = "";
+    const sorted = [...state.classes].sort((a, b) => a.name.localeCompare(b.name));
+    for (const cls of sorted) {
+      const opt = document.createElement("option");
+      opt.value = cls.id;
+      opt.textContent = cls.name;
+      if (cls.id === state.activeClassId) opt.selected = true;
+      classSelect.appendChild(opt);
+    }
+    document.getElementById("btn-create-class").disabled = state.classes.length >= MAX_CLASSES;
+    document.getElementById("btn-delete-class").disabled = state.classes.length <= 1;
+  }
+
+  classSelect.addEventListener("change", () => switchClass(classSelect.value));
+
+  document.getElementById("btn-add-student").addEventListener("click", () => {
+    const firstEl = document.getElementById("input-first");
+    const lastEl = document.getElementById("input-last");
+    addStudent(firstEl.value, lastEl.value);
+    firstEl.value = "";
+    lastEl.value = "";
+    firstEl.focus();
+  });
+
+  document.getElementById("btn-import").addEventListener("click", () => {
+    const textEl = document.getElementById("input-import");
+    const added = importList(textEl.value);
+    if (added) textEl.value = "";
+  });
+
+  document.getElementById("input-import-file").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => importList(String(reader.result));
+    reader.readAsText(file);
+    e.target.value = "";
+  });
+
+  document.getElementById("btn-clear-roster").addEventListener("click", () => {
+    if (confirm("Remove all students from the roster? This also erases their tracked time.")) {
+      clearRoster();
+    }
+  });
+
+  // ---------- Reset day ----------
+  document.getElementById("btn-reset").addEventListener("click", () => {
+    if (confirm("Reset all timers and cumulative totals for a new day? Names are kept.")) {
+      resetDay();
+    }
+  });
+
+  // ---------- Report modal ----------
+  const modalReport = document.getElementById("modal-report");
+  const reportBody = document.getElementById("report-body");
+
+  function renderReport() {
+    reportBody.innerHTML = "";
+    const list = [...activeClass().students].sort((a, b) => totalFor(b) - totalFor(a));
+    for (const student of list) {
+      const tr = document.createElement("tr");
+      const elapsed = elapsedFor(student);
+      if (student.activeStart) {
+        if (elapsed >= DANGER_MS) tr.classList.add("row-danger");
+        else if (elapsed >= WARN_MS) tr.classList.add("row-warn");
+      }
+      tr.innerHTML = `
+        <td>${escapeHtml(student.first)} ${escapeHtml(student.last)}</td>
+        <td>${student.sessions.length}</td>
+        <td>${student.activeStart ? formatDuration(elapsed) : "—"}</td>
+        <td>${formatDuration(totalFor(student))}</td>
+      `;
+      reportBody.appendChild(tr);
+    }
+  }
+
+  document.getElementById("btn-report").addEventListener("click", () => {
+    renderReport();
+    modalReport.showModal();
+  });
+
+  document.getElementById("btn-print").addEventListener("click", () => {
+    window.print();
+  });
+
+  document.getElementById("btn-export-csv").addEventListener("click", () => {
+    const rows = [["Name", "Times Out", "Currently Out (sec)", "Total Time Out (sec)", "Total Time Out"]];
+    const list = [...activeClass().students].sort((a, b) => totalFor(b) - totalFor(a));
+    for (const student of list) {
+      const total = totalFor(student);
+      rows.push([
+        `${student.first} ${student.last}`,
+        student.sessions.length,
+        student.activeStart ? Math.floor(elapsedFor(student) / 1000) : 0,
+        Math.floor(total / 1000),
+        formatDuration(total)
+      ]);
+    }
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tappy-report-${activeClass().name.replace(/[^a-z0-9]+/gi, "-")}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // ---------- Resize handling ----------
+  let resizeTimeout;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => layoutGrid(sortedStudents()), 100);
+  });
+
+  // ---------- Init ----------
+  load();
+  renderClassUI();
+  renderGrid();
+  renderRosterList();
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("service-worker.js").catch(() => {});
+    });
+  }
+})();

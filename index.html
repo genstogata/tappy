@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Tappy — Hallway Pass Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+<link rel="icon" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tappy">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="app-header">
+    <div class="title-group">
+      <h1>Tappy</h1>
+      <select id="class-select" aria-label="Select class"></select>
+    </div>
+    <div class="toolbar">
+      <button id="btn-create-class" class="btn">+ Create Class</button>
+      <button id="btn-delete-class" class="btn btn-danger">Delete Class</button>
+      <button id="btn-roster" class="btn">Roster</button>
+      <button id="btn-report" class="btn">Report</button>
+      <button id="btn-reset" class="btn btn-danger">Reset Day</button>
+    </div>
+  </header>
+
+  <p class="offline-disclaimer">Tappy works offline. Your data is not saved or synced between devices. Make sure to save a report daily if needed.</p>
+
+  <main id="grid" class="grid" aria-label="Student grid">
+    <p id="empty-state" class="empty-state">No students yet. Tap <strong>Roster</strong> to add or import names.</p>
+  </main>
+
+  <!-- Roster Modal -->
+  <dialog id="modal-roster" class="modal">
+    <form method="dialog" class="modal-content">
+      <h2>Roster</h2>
+
+      <section class="modal-section">
+        <h3>Add a student</h3>
+        <div class="row">
+          <input type="text" id="input-first" placeholder="First name" autocomplete="off">
+          <input type="text" id="input-last" placeholder="Last name" autocomplete="off">
+          <button id="btn-add-student" class="btn" type="button">Add</button>
+        </div>
+      </section>
+
+      <section class="modal-section">
+        <h3>Import list</h3>
+        <p class="hint">One student per line: <code>First Last</code> (or comma-separated <code>Last, First</code>).</p>
+        <textarea id="input-import" rows="5" placeholder="Jane Doe&#10;John Smith"></textarea>
+        <div class="row">
+          <button id="btn-import" class="btn" type="button">Import</button>
+          <input type="file" id="input-import-file" accept=".csv,.txt,text/csv,text/plain">
+        </div>
+      </section>
+
+      <section class="modal-section">
+        <h3>Current roster (<span id="roster-count">0</span>)</h3>
+        <ul id="roster-list" class="roster-list"></ul>
+        <button id="btn-clear-roster" class="btn btn-danger" type="button">Clear entire roster</button>
+      </section>
+
+      <div class="modal-actions">
+        <button class="btn" value="close">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Report Modal -->
+  <dialog id="modal-report" class="modal">
+    <form method="dialog" class="modal-content">
+      <h2>Time Out of Class Report</h2>
+      <div id="report-table-wrap">
+        <table id="report-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Times Out</th>
+              <th>Currently Out</th>
+              <th>Total Time Out</th>
+            </tr>
+          </thead>
+          <tbody id="report-body"></tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-export-csv" class="btn" type="button">Export CSV</button>
+        <button id="btn-print" class="btn" type="button">Print</button>
+        <button class="btn" value="close">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Create Class Modal -->
+  <dialog id="modal-create-class" class="modal">
+    <form method="dialog" class="modal-content">
+      <h2>Create Class</h2>
+      <div class="row">
+        <input type="text" id="input-new-class-name" placeholder="Class name" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button class="btn" value="cancel">Cancel</button>
+        <button id="btn-create-class-confirm" class="btn" value="create">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>
