@@ -434,9 +434,15 @@
   // ---------- Report modal ----------
   const modalReport = document.getElementById("modal-report");
   const reportBody = document.getElementById("report-body");
+  const reportMeta = document.getElementById("report-meta");
+
+  function reportDateStr() {
+    return new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  }
 
   function renderReport() {
     reportBody.innerHTML = "";
+    reportMeta.textContent = `${activeClass().name} — ${reportDateStr()}`;
     const list = [...activeClass().students].sort((a, b) => totalFor(b) - totalFor(a));
     for (const student of list) {
       const tr = document.createElement("tr");
@@ -465,7 +471,12 @@
   });
 
   document.getElementById("btn-export-csv").addEventListener("click", () => {
-    const rows = [["Name", "Times Out", "Currently Out (sec)", "Total Time Out (sec)", "Total Time Out"]];
+    const rows = [
+      ["Class", activeClass().name],
+      ["Date", reportDateStr()],
+      [],
+      ["Name", "Times Out", "Currently Out (sec)", "Total Time Out (sec)", "Total Time Out"]
+    ];
     const list = [...activeClass().students].sort((a, b) => totalFor(b) - totalFor(a));
     for (const student of list) {
       const total = totalFor(student);
