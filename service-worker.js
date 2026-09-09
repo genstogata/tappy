@@ -1,5 +1,5 @@
 // Bump this on every deploy so clients pick up new files instead of stale cache.
-const CACHE_NAME = "tappy-cache-v6";
+const CACHE_NAME = "tappy-cache-v9";
 const PRECACHE_URLS = [
   "./",
   "./index.html",
@@ -30,8 +30,10 @@ self.addEventListener("activate", (event) => {
 });
 
 // Cache-first so the app works fully offline; falls back to network for anything uncached.
+// Only intercept same-origin requests so a compromised/third-party endpoint can never be cached or served from cache.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  if (new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;

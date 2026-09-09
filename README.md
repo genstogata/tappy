@@ -43,7 +43,7 @@ Once loaded in a supported browser (Chrome, Edge, Safari on iOS/macOS, etc.), us
 
 ## Usage
 
-1. **Create a class** — click **+ Create Class** and give it a name, or use the default class already provided.
+1. **Create a class** — on first launch, click **+ Create Class** and give it a name (up to 5 classes).
 2. **Add students** — click **Roster**, then either:
    - Type a first and last name and click **Add**, or
    - Paste a list of names (one per line, `First Last` or `Last, First`) into the import box and click **Import**, or

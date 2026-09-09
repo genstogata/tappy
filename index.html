@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<!-- Strict CSP: everything is same-origin, no inline/eval scripts, no external network access.
+     (frame-ancestors/X-Frame-Options can't be set via <meta>; GitHub Pages doesn't allow custom headers.) -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>Tappy — Hallway Pass Tracker</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#2563eb">
@@ -29,10 +32,10 @@
     </div>
   </header>
 
-  <p class="offline-disclaimer">Tappy works offline. Your data is not saved or synced between devices. Make sure to save a report daily if needed.</p>
+  <p class="offline-disclaimer">Tappy works offline. Your data is not saved online or synced between devices. Make sure to save a report daily if needed.</p>
 
   <main id="grid" class="grid" aria-label="Student grid">
-    <p id="empty-state" class="empty-state">No students yet. Tap <strong>Roster</strong> to add or import names.</p>
+    <div id="empty-state" class="empty-state"></div>
   </main>
 
   <!-- Roster Modal -->

@@ -23,26 +23,59 @@
   }
 
   // ---------- Persistence ----------
+  // Rebuilds trusted-shaped objects from parsed JSON so a corrupted/tampered localStorage
+  // value (e.g. hand-edited via devtools) can't inject unexpected types/fields into app state.
+  function normalizeStudent(s) {
+    return {
+      id: (s && typeof s.id === "string" && s.id) || uid(),
+      first: (s && typeof s.first === "string") ? s.first : "",
+      last: (s && typeof s.last === "string") ? s.last : "",
+      activeStart: (s && typeof s.activeStart === "number") ? s.activeStart : null,
+      totalMs: (s && typeof s.totalMs === "number" && s.totalMs >= 0) ? s.totalMs : 0,
+      sessions: (s && Array.isArray(s.sessions))
+        ? s.sessions.filter(sess => sess && typeof sess.start === "number" && typeof sess.end === "number")
+        : []
+    };
+  }
+
+  function normalizeState(raw) {
+    if (!raw || typeof raw !== "object" || !Array.isArray(raw.classes)) return null;
+    const classes = raw.classes
+      .filter(c => c && typeof c === "object")
+      .map(c => ({
+        id: (typeof c.id === "string" && c.id) || uid(),
+        name: (typeof c.name === "string" && c.name) || "Class",
+        students: Array.isArray(c.students) ? c.students.filter(s => s && typeof s === "object").map(normalizeStudent) : []
+      }));
+    if (classes.length === 0) return null;
+    const activeClassId = classes.some(c => c.id === raw.activeClassId) ? raw.activeClassId : classes[0].id;
+    return { activeClassId, classes };
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        state = JSON.parse(raw);
+        state = normalizeState(JSON.parse(raw)) || { activeClassId: "", classes: [] };
       } else {
+        // No default class on first run — only migrate legacy single-roster data, if any.
         const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
-        const legacyStudents = legacyRaw ? JSON.parse(legacyRaw) : [];
-        const first = makeClass("Class 1", legacyStudents);
-        state = { activeClassId: first.id, classes: [first] };
+        const legacyParsed = legacyRaw ? JSON.parse(legacyRaw) : [];
+        const legacyStudents = Array.isArray(legacyParsed)
+          ? legacyParsed.filter(s => s && typeof s === "object").map(normalizeStudent)
+          : [];
+        if (legacyStudents.length > 0) {
+          const first = makeClass("Class 1", legacyStudents);
+          state = { activeClassId: first.id, classes: [first] };
+        } else {
+          state = { activeClassId: "", classes: [] };
+        }
       }
     } catch (e) {
       console.error("Failed to load app state", e);
       state = { activeClassId: "", classes: [] };
     }
-    if (!state.classes || state.classes.length === 0) {
-      const first = makeClass("Class 1", []);
-      state = { activeClassId: first.id, classes: [first] };
-    }
-    if (!activeClass()) {
+    if (state.classes.length > 0 && !activeClass()) {
       state.activeClassId = state.classes[0].id;
     }
   }
@@ -76,7 +109,9 @@
   }
 
   function sortedStudents() {
-    return [...activeClass().students].sort((a, b) => {
+    const cls = activeClass();
+    if (!cls) return [];
+    return [...cls.students].sort((a, b) => {
       const ln = a.last.localeCompare(b.last);
       if (ln !== 0) return ln;
       return a.first.localeCompare(b.first);
@@ -94,6 +129,7 @@
 
     const list = sortedStudents();
     emptyState.style.display = list.length === 0 ? "flex" : "none";
+    if (list.length === 0) updateEmptyState(!!activeClass());
 
     for (const student of list) {
       const tile = document.createElement("div");
@@ -171,9 +207,31 @@
     }[c]));
   }
 
+  // Shows getting-started steps when there's no class yet, or roster-specific instructions when a class is empty.
+  function updateEmptyState(hasClass) {
+    emptyState.innerHTML = hasClass ? `
+      <div class="empty-state-content">
+        <p>No students yet in this class.</p>
+        <p>Click <strong>Roster</strong> to add students — type a name, paste a list, or upload a .csv/.txt file — then tap their tile here to start a timer when they head out.</p>
+      </div>
+    ` : `
+      <div class="empty-state-content">
+        <h2>Welcome to Tappy</h2>
+        <ol>
+          <li>Click <strong>+ Create Class</strong> to set up your first class.</li>
+          <li>Click <strong>Roster</strong> to add students — type names one at a time, or paste/upload a list.</li>
+          <li>Tap a student's tile to start their timer when they leave the room; tap again when they return.</li>
+          <li>Click <strong>Report</strong> anytime for today's totals, and <strong>Reset Day</strong> to clear timers for tomorrow.</li>
+        </ol>
+      </div>
+    `;
+  }
+
   // ---------- Timer tick ----------
   function tick() {
-    for (const student of activeClass().students) {
+    const cls = activeClass();
+    if (!cls) return;
+    for (const student of cls.students) {
       const tile = tileEls.get(student.id);
       if (!tile) continue;
 
@@ -202,7 +260,9 @@
 
   // ---------- Actions ----------
   function toggleStudent(id) {
-    const student = activeClass().students.find(s => s.id === id);
+    const cls = activeClass();
+    if (!cls) return;
+    const student = cls.students.find(s => s.id === id);
     if (!student) return;
 
     if (student.activeStart) {
@@ -219,10 +279,12 @@
   }
 
   function addStudent(first, last) {
+    const cls = activeClass();
+    if (!cls) return;
     first = first.trim();
     last = last.trim();
     if (!first && !last) return;
-    activeClass().students.push({ id: uid(), first, last, activeStart: null, totalMs: 0, sessions: [] });
+    cls.students.push({ id: uid(), first, last, activeStart: null, totalMs: 0, sessions: [] });
     save();
     renderGrid();
     renderRosterList();
@@ -230,6 +292,7 @@
 
   function removeStudent(id) {
     const cls = activeClass();
+    if (!cls) return;
     cls.students = cls.students.filter(s => s.id !== id);
     save();
     renderGrid();
@@ -251,6 +314,7 @@
 
   function importList(text) {
     const cls = activeClass();
+    if (!cls) return 0;
     const lines = text.split(/\r?\n/);
     let added = 0;
     for (const line of lines) {
@@ -269,7 +333,9 @@
   }
 
   function resetDay() {
-    for (const student of activeClass().students) {
+    const cls = activeClass();
+    if (!cls) return;
+    for (const student of cls.students) {
       student.activeStart = null;
       student.totalMs = 0;
       student.sessions = [];
@@ -279,7 +345,9 @@
   }
 
   function clearRoster() {
-    activeClass().students = [];
+    const cls = activeClass();
+    if (!cls) return;
+    cls.students = [];
     save();
     renderGrid();
     renderRosterList();
@@ -308,10 +376,11 @@
   }
 
   function deleteActiveClass() {
-    if (state.classes.length <= 1) return;
+    if (state.classes.length === 0) return;
     const idx = state.classes.findIndex(c => c.id === state.activeClassId);
     state.classes.splice(idx, 1);
-    state.activeClassId = state.classes[Math.max(0, idx - 1)].id;
+    const next = state.classes[Math.max(0, idx - 1)];
+    state.activeClassId = next ? next.id : "";
     save();
     renderClassUI();
     renderGrid();
@@ -325,7 +394,8 @@
 
   function renderRosterList() {
     rosterList.innerHTML = "";
-    rosterCount.textContent = activeClass().students.length;
+    const cls = activeClass();
+    rosterCount.textContent = cls ? cls.students.length : 0;
     for (const student of sortedStudents()) {
       const li = document.createElement("li");
       li.innerHTML = `<span>${escapeHtml(student.first)} ${escapeHtml(student.last)}</span>`;
@@ -369,8 +439,9 @@
   });
 
   document.getElementById("btn-delete-class").addEventListener("click", () => {
-    if (state.classes.length <= 1) return;
-    if (confirm(`Delete "${activeClass().name}" and all its tracked data? This cannot be undone.`)) {
+    const cls = activeClass();
+    if (!cls) return;
+    if (confirm(`Delete "${cls.name}" and all its tracked data? This cannot be undone.`)) {
       deleteActiveClass();
     }
   });
@@ -388,8 +459,12 @@
       if (cls.id === state.activeClassId) opt.selected = true;
       classSelect.appendChild(opt);
     }
+    const hasClasses = state.classes.length > 0;
     document.getElementById("btn-create-class").disabled = state.classes.length >= MAX_CLASSES;
-    document.getElementById("btn-delete-class").disabled = state.classes.length <= 1;
+    document.getElementById("btn-delete-class").disabled = !hasClasses;
+    document.getElementById("btn-roster").disabled = !hasClasses;
+    document.getElementById("btn-report").disabled = !hasClasses;
+    document.getElementById("btn-reset").disabled = !hasClasses;
   }
 
   classSelect.addEventListener("change", () => switchClass(classSelect.value));
@@ -441,9 +516,11 @@
   }
 
   function renderReport() {
+    const cls = activeClass();
+    if (!cls) return;
     reportBody.innerHTML = "";
-    reportMeta.textContent = `${activeClass().name} — ${reportDateStr()}`;
-    const list = [...activeClass().students].sort((a, b) => totalFor(b) - totalFor(a));
+    reportMeta.textContent = `${cls.name} — ${reportDateStr()}`;
+    const list = [...cls.students].sort((a, b) => totalFor(b) - totalFor(a));
     for (const student of list) {
       const tr = document.createElement("tr");
       const elapsed = elapsedFor(student);
@@ -470,14 +547,22 @@
     window.print();
   });
 
+  // Prevent CSV formula injection: spreadsheet apps auto-execute cells starting with =, +, -, @, tab, or CR.
+  function sanitizeCsvField(value) {
+    const str = String(value);
+    return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  }
+
   document.getElementById("btn-export-csv").addEventListener("click", () => {
+    const cls = activeClass();
+    if (!cls) return;
     const rows = [
-      ["Class", activeClass().name],
+      ["Class", cls.name],
       ["Date", reportDateStr()],
       [],
       ["Name", "Times Out", "Currently Out (sec)", "Total Time Out (sec)", "Total Time Out"]
     ];
-    const list = [...activeClass().students].sort((a, b) => totalFor(b) - totalFor(a));
+    const list = [...cls.students].sort((a, b) => totalFor(b) - totalFor(a));
     for (const student of list) {
       const total = totalFor(student);
       rows.push([
@@ -488,12 +573,12 @@
         formatDuration(total)
       ]);
     }
-    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const csv = rows.map(r => r.map(v => `"${sanitizeCsvField(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `tappy-report-${activeClass().name.replace(/[^a-z0-9]+/gi, "-")}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `tappy-report-${cls.name.replace(/[^a-z0-9]+/gi, "-")}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
