@@ -7,7 +7,7 @@
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
-  const APP_VERSION = "v14"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
+  const APP_VERSION = "v15"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -627,9 +627,13 @@
   renderRosterList();
   document.getElementById("app-version").textContent = APP_VERSION;
 
+  const btnCheckUpdate = document.getElementById("btn-check-update");
+
   if ("serviceWorker" in navigator) {
+    let swRegistration = null;
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("service-worker.js").then((reg) => {
+        swRegistration = reg;
         // This app is often left open all day on a classroom device without navigating away,
         // so proactively re-check for updates instead of waiting on the browser's own throttling.
         document.addEventListener("visibilitychange", () => {
@@ -646,5 +650,23 @@
       refreshing = true;
       window.location.reload();
     });
+
+    // Manual escape hatch for iOS Safari/PWA, where automatic update checks can be unreliable.
+    btnCheckUpdate.addEventListener("click", () => {
+      if (!swRegistration) return;
+      btnCheckUpdate.disabled = true;
+      btnCheckUpdate.textContent = "Checking…";
+      swRegistration.update().finally(() => {
+        // A found update triggers the controllerchange listener above, which reloads the page;
+        // if nothing happens shortly, there was no update to apply.
+        setTimeout(() => {
+          btnCheckUpdate.disabled = false;
+          btnCheckUpdate.textContent = "You're on the latest version";
+          setTimeout(() => { btnCheckUpdate.textContent = "Check for updates"; }, 3000);
+        }, 1500);
+      });
+    });
+  } else {
+    btnCheckUpdate.disabled = true;
   }
 })();
