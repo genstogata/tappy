@@ -196,17 +196,28 @@ html, body {
 
 .tile .sub.visible { display: block; }
 
+.tile .status-icon {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: calc(var(--name-size) * 0.4);
+  line-height: 1;
+}
+.tile .status-icon:empty { display: none; }
+
 .tile.tile-active .timer { display: block; color: #1c4e80; }
 .tile.tile-active {
   background: var(--tile-active);
   border-color: var(--tile-active-border);
 }
+.tile.tile-active .status-icon { color: #1c4e80; }
 
 .tile.tile-warn {
   background: var(--tile-warn);
   border-color: var(--tile-warn-border);
 }
 .tile.tile-warn .timer { color: #6b5900; }
+.tile.tile-warn .status-icon { color: #6b5900; }
 
 .tile.tile-danger {
   background: var(--tile-danger);
@@ -214,6 +225,7 @@ html, body {
   animation: pulse 1.4s ease-in-out infinite;
 }
 .tile.tile-danger .timer { color: #4a0000; }
+.tile.tile-danger .status-icon { color: #4a0000; }
 
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(201, 42, 42, 0.35); }

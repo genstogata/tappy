@@ -7,7 +7,7 @@
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
-  const APP_VERSION = "v19"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
+  const APP_VERSION = "v20"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -144,6 +144,7 @@
       tile.setAttribute("role", "button");
       tile.setAttribute("tabindex", "0");
       tile.innerHTML = `
+        <div class="status-icon" aria-hidden="true"></div>
         <div class="name">
           <div class="name-line">${escapeHtml(student.first)}</div>
           <div class="name-line">${escapeHtml(student.last)}</div>
@@ -245,15 +246,28 @@
 
       const timerEl = tile.querySelector(".timer");
       const subEl = tile.querySelector(".sub");
+      const iconEl = tile.querySelector(".status-icon");
 
       if (student.activeStart) {
         const elapsed = elapsedFor(student);
         timerEl.textContent = formatDuration(elapsed);
         tile.classList.add("tile-active");
-        if (elapsed >= DANGER_MS) tile.classList.add("tile-danger");
-        else if (elapsed >= WARN_MS) tile.classList.add("tile-warn");
+        if (elapsed >= DANGER_MS) {
+          tile.classList.add("tile-danger");
+          iconEl.textContent = "\u25A0"; // filled square: out 10+ min
+          iconEl.title = "Out 10+ minutes";
+        } else if (elapsed >= WARN_MS) {
+          tile.classList.add("tile-warn");
+          iconEl.textContent = "\u25B2"; // filled triangle: out 5+ min
+          iconEl.title = "Out 5+ minutes";
+        } else {
+          iconEl.textContent = "\u25CF"; // filled circle: out
+          iconEl.title = "Out";
+        }
         subEl.classList.remove("visible");
       } else {
+        iconEl.textContent = "";
+        iconEl.title = "";
         subEl.classList.toggle("visible", student.totalMs > 0);
         if (student.totalMs > 0) {
           subEl.textContent = `Today: ${formatDuration(student.totalMs)}`;
