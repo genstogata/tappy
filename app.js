@@ -7,7 +7,7 @@
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
-  const APP_VERSION = "v17"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
+  const APP_VERSION = "v18"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -568,6 +568,32 @@
   document.getElementById("btn-print").addEventListener("click", () => {
     window.print();
   });
+
+  // Printing an open <dialog> directly gets clipped to a single page in Chromium (the dialog renders in the
+  // "top layer", which print pagination doesn't handle for overflowing content). Work around this by cloning
+  // the report into a plain element in normal document flow just for the duration of printing, which paginates
+  // correctly. Runs on beforeprint/afterprint so it also covers Ctrl/Cmd+P, not just the Print button.
+  let printClone = null;
+  function buildPrintClone() {
+    if (printClone || !modalReport.open) return;
+    printClone = document.createElement("div");
+    printClone.id = "print-report-clone";
+    const heading = document.createElement("h2");
+    heading.textContent = "Time Out of Class Report";
+    const meta = document.createElement("p");
+    meta.textContent = reportMeta.textContent;
+    const tableWrap = document.getElementById("report-table-wrap").cloneNode(true);
+    printClone.append(heading, meta, tableWrap);
+    document.body.appendChild(printClone);
+  }
+  function teardownPrintClone() {
+    if (printClone) {
+      printClone.remove();
+      printClone = null;
+    }
+  }
+  window.addEventListener("beforeprint", buildPrintClone);
+  window.addEventListener("afterprint", teardownPrintClone);
 
   // Prevent CSV formula injection: spreadsheet apps auto-execute cells starting with =, +, -, @, tab, or CR.
   function sanitizeCsvField(value) {

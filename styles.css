@@ -355,23 +355,19 @@ textarea#input-import {
 }
 
 @media print {
+  /* Only the print clone (built in app.js from the report modal) is printed; the dialog itself is never
+     printed directly since Chromium clips top-layer content to a single page. */
+  dialog { display: none !important; }
   body * { visibility: hidden; }
-  #modal-report, #modal-report * { visibility: visible; }
-  #modal-report {
-    position: absolute;
-    inset: 0;
+  #print-report-clone, #print-report-clone * { visibility: visible; }
+  #print-report-clone {
+    display: block;
+    position: static;
     width: 100%;
-    max-height: none;
-    box-shadow: none;
   }
-  #modal-report .modal-content {
-    max-height: none;
-    overflow: visible;
-  }
-  #btn-export-csv, #btn-print, .modal-actions button[value="close"] { display: none; }
   /* Always show the full timestamp log on paper, regardless of on-screen expand/collapse state. */
   .col-details { display: none; }
-  #report-table tr.detail-row[hidden] { display: table-row !important; }
+  #print-report-clone tr.detail-row[hidden] { display: table-row !important; }
 }
 
 .app-footer {
