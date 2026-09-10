@@ -356,13 +356,12 @@ textarea#input-import {
 
 @media print {
   /* Only the print clone (built in app.js from the report modal) is printed; the dialog itself is never
-     printed directly since Chromium clips top-layer content to a single page. */
-  dialog { display: none !important; }
-  body * { visibility: hidden; }
-  #print-report-clone, #print-report-clone * { visibility: visible; }
+     printed directly since Chromium clips top-layer content to a single page. Everything lives inside
+     .app, so hiding it with display:none (not visibility:hidden) removes it from layout entirely —
+     otherwise its full hidden height would push the clone down and print as a blank leading page. */
+  .app { display: none !important; }
   #print-report-clone {
     display: block;
-    position: static;
     width: 100%;
   }
   /* Always show the full timestamp log on paper, regardless of on-screen expand/collapse state. */
