@@ -7,7 +7,7 @@
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
-  const APP_VERSION = "v21"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
+  const APP_VERSION = "v22"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -112,6 +112,10 @@
 
   function totalFor(student) {
     return student.totalMs + elapsedFor(student);
+  }
+
+  function hasAbsence(student) {
+    return student.sessions.length > 0 || !!student.activeStart;
   }
 
   function sortedStudents() {
@@ -542,7 +546,13 @@
     if (!cls) return;
     reportBody.innerHTML = "";
     reportMeta.textContent = `${cls.name} — ${reportDateStr()} — Current time: ${formatClockTime(Date.now())}`;
-    const list = [...cls.students].sort((a, b) => totalFor(b) - totalFor(a));
+    const list = [...cls.students].filter(hasAbsence).sort((a, b) => totalFor(b) - totalFor(a));
+    if (list.length === 0) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="5" class="hint">No absences recorded for this class.</td>`;
+      reportBody.appendChild(tr);
+      return;
+    }
     for (const student of list) {
       const tr = document.createElement("tr");
       const elapsed = elapsedFor(student);
@@ -625,7 +635,7 @@
       [],
       ["Name", "Times Out", "Currently Out (sec)", "Total Time Out (sec)", "Total Time Out", "Session Log (local time)"]
     ];
-    const list = [...cls.students].sort((a, b) => totalFor(b) - totalFor(a));
+    const list = [...cls.students].filter(hasAbsence).sort((a, b) => totalFor(b) - totalFor(a));
     for (const student of list) {
       const total = totalFor(student);
       const sessionLog = student.sessions
