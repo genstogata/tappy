@@ -7,7 +7,7 @@
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
-  const APP_VERSION = "v28"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
+  const APP_VERSION = "v29"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -231,6 +231,7 @@
         <ol>
           <li>Click <strong>+ Create Class</strong> to set up your first class.</li>
           <li>Click <strong>Roster</strong> to add students — type names one at a time, or paste a list.</li>
+          <li>When set up is complete, click the lock icon to prevent tampering with your settings (tapping in/out still works).</li>
           <li>Tap a student's tile to start their timer when they leave the room; tap again when they return.</li>
           <li>Click <strong>Report</strong> anytime for today's totals, and <strong>Reset Day</strong> to clear timers for tomorrow.</li>
         </ol>
