@@ -7,7 +7,7 @@
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
-  const APP_VERSION = "v25"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
+  const APP_VERSION = "v26"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -497,18 +497,20 @@
   // Soft deterrent only (PIN is stored in plain text) — meant to stop casual tampering, not determined students.
   const LOCK_PIN_KEY = "tappy.lockPin.v1";
   const LOCKED_KEY = "tappy.locked.v1";
+  const MAX_PIN_LEN = 8;
   let locked = localStorage.getItem(LOCKED_KEY) === "1";
 
   const btnLock = document.getElementById("btn-lock");
   const modalPin = document.getElementById("modal-pin");
   const pinTitle = document.getElementById("pin-modal-title");
   const pinHint = document.getElementById("pin-modal-hint");
-  const inputPin = document.getElementById("input-pin");
-  const pinConfirmRow = document.getElementById("pin-confirm-row");
-  const inputPinConfirm = document.getElementById("input-pin-confirm");
+  const pinDisplay = document.getElementById("pin-display");
   const pinError = document.getElementById("pin-error");
   const btnPinConfirm = document.getElementById("btn-pin-confirm");
   let pinMode = null; // "setup" | "unlock"
+  let pinStage = null; // "first" | "confirm" | "unlock"
+  let pinFirstEntry = null;
+  let pinBuffer = "";
 
   function getStoredPin() {
     return localStorage.getItem(LOCK_PIN_KEY) || "";
@@ -524,22 +526,21 @@
     renderClassUI();
   }
 
-  function openPinModal(mode) {
-    pinMode = mode;
-    inputPin.value = "";
-    inputPinConfirm.value = "";
-    pinError.hidden = true;
-    if (mode === "setup") {
+  function updatePinDisplay() {
+    pinDisplay.textContent = "●".repeat(pinBuffer.length);
+  }
+
+  function updatePinCopy() {
+    if (pinStage === "first") {
       pinTitle.textContent = "Set a PIN";
       pinHint.textContent = "This PIN will be required to unlock the controls.";
-      pinConfirmRow.hidden = false;
+    } else if (pinStage === "confirm") {
+      pinTitle.textContent = "Confirm PIN";
+      pinHint.textContent = "Enter the PIN again to confirm.";
     } else {
       pinTitle.textContent = "Enter PIN";
       pinHint.textContent = "Enter the PIN to unlock the controls.";
-      pinConfirmRow.hidden = true;
     }
-    modalPin.showModal();
-    inputPin.focus();
   }
 
   function showPinError(msg) {
@@ -547,36 +548,89 @@
     pinError.hidden = false;
   }
 
-  btnPinConfirm.addEventListener("click", () => {
-    const pin = inputPin.value.trim();
-    if (pinMode === "setup") {
-      if (!pin) { showPinError("PIN can't be empty."); return; }
-      if (pin !== inputPinConfirm.value.trim()) { showPinError("PINs don't match."); return; }
-      localStorage.setItem(LOCK_PIN_KEY, pin);
+  function appendPinDigit(digit) {
+    if (pinBuffer.length >= MAX_PIN_LEN) return;
+    pinBuffer += digit;
+    pinError.hidden = true;
+    updatePinDisplay();
+  }
+
+  function backspacePinDigit() {
+    pinBuffer = pinBuffer.slice(0, -1);
+    updatePinDisplay();
+  }
+
+  function clearPinBuffer() {
+    pinBuffer = "";
+    updatePinDisplay();
+  }
+
+  function openPinModal(mode) {
+    pinMode = mode;
+    pinStage = mode === "setup" ? "first" : "unlock";
+    pinFirstEntry = null;
+    pinBuffer = "";
+    pinError.hidden = true;
+    updatePinCopy();
+    updatePinDisplay();
+    modalPin.showModal();
+  }
+
+  function submitPinEntry() {
+    if (!pinBuffer) { showPinError("Enter a PIN."); return; }
+    if (pinStage === "first") {
+      pinFirstEntry = pinBuffer;
+      pinBuffer = "";
+      pinStage = "confirm";
+      updatePinCopy();
+      updatePinDisplay();
+      return;
+    }
+    if (pinStage === "confirm") {
+      if (pinBuffer !== pinFirstEntry) {
+        showPinError("PINs don't match. Try again.");
+        pinFirstEntry = null;
+        pinBuffer = "";
+        pinStage = "first";
+        updatePinCopy();
+        updatePinDisplay();
+        return;
+      }
+      localStorage.setItem(LOCK_PIN_KEY, pinBuffer);
       modalPin.close();
       setLocked(true);
-    } else {
-      if (pin === getStoredPin()) {
-        modalPin.close();
-        setLocked(false);
-      } else {
-        showPinError("Incorrect PIN.");
-        inputPin.value = "";
-        inputPin.focus();
-      }
+      return;
     }
-  });
+    // unlock
+    if (pinBuffer === getStoredPin()) {
+      modalPin.close();
+      setLocked(false);
+    } else {
+      showPinError("Incorrect PIN.");
+      pinBuffer = "";
+      updatePinDisplay();
+    }
+  }
 
-  inputPin.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    if (pinMode === "setup") inputPinConfirm.focus();
-    else btnPinConfirm.click();
+  btnPinConfirm.addEventListener("click", submitPinEntry);
+
+  document.querySelectorAll(".pin-key[data-key]").forEach((btn) => {
+    btn.addEventListener("click", () => appendPinDigit(btn.dataset.key));
   });
-  inputPinConfirm.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+  document.getElementById("btn-pin-clear").addEventListener("click", clearPinBuffer);
+  document.getElementById("btn-pin-backspace").addEventListener("click", backspacePinDigit);
+
+  // Lets a physical keyboard drive the pad too, e.g. for testing on a laptop.
+  modalPin.addEventListener("keydown", (e) => {
+    if (e.key >= "0" && e.key <= "9") {
       e.preventDefault();
-      btnPinConfirm.click();
+      appendPinDigit(e.key);
+    } else if (e.key === "Backspace") {
+      e.preventDefault();
+      backspacePinDigit();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      submitPinEntry();
     }
   });
 

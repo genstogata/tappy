@@ -103,17 +103,26 @@
   </dialog>
 
   <!-- PIN Modal -->
-  <dialog id="modal-pin" class="modal">
+  <dialog id="modal-pin" class="modal modal-pin">
     <form method="dialog" class="modal-content">
       <h2 id="pin-modal-title">Enter PIN</h2>
       <p id="pin-modal-hint" class="hint"></p>
-      <div class="row">
-        <input type="password" id="input-pin" inputmode="numeric" pattern="[0-9]*" placeholder="PIN" autocomplete="off">
-      </div>
-      <div class="row" id="pin-confirm-row" hidden>
-        <input type="password" id="input-pin-confirm" inputmode="numeric" pattern="[0-9]*" placeholder="Confirm PIN" autocomplete="off">
-      </div>
+      <div id="pin-display" class="pin-display" aria-live="polite"></div>
       <p id="pin-error" class="hint pin-error" hidden></p>
+      <div class="pin-pad">
+        <button type="button" class="pin-key" data-key="1">1</button>
+        <button type="button" class="pin-key" data-key="2">2</button>
+        <button type="button" class="pin-key" data-key="3">3</button>
+        <button type="button" class="pin-key" data-key="4">4</button>
+        <button type="button" class="pin-key" data-key="5">5</button>
+        <button type="button" class="pin-key" data-key="6">6</button>
+        <button type="button" class="pin-key" data-key="7">7</button>
+        <button type="button" class="pin-key" data-key="8">8</button>
+        <button type="button" class="pin-key" data-key="9">9</button>
+        <button type="button" id="btn-pin-clear" class="pin-key pin-key-action">Clear</button>
+        <button type="button" class="pin-key" data-key="0">0</button>
+        <button type="button" id="btn-pin-backspace" class="pin-key pin-key-action" aria-label="Backspace">⌫</button>
+      </div>
       <div class="modal-actions">
         <button class="btn" value="cancel" type="submit">Cancel</button>
         <button id="btn-pin-confirm" class="btn" type="button">OK</button>
