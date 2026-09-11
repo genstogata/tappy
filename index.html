@@ -22,6 +22,7 @@
     <div class="title-group">
       <h1>Tappy</h1>
       <select id="class-select" aria-label="Select class"></select>
+      <button id="btn-lock" class="btn-lock" type="button" aria-label="Lock controls" title="Lock controls">🔓</button>
     </div>
     <div class="toolbar">
       <button id="btn-create-class" class="btn">+ Create Class</button>
@@ -97,6 +98,25 @@
         <button id="btn-export-csv" class="btn" type="button">Export CSV</button>
         <button id="btn-print" class="btn" type="button">Print</button>
         <button class="btn" value="close">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- PIN Modal -->
+  <dialog id="modal-pin" class="modal">
+    <form method="dialog" class="modal-content">
+      <h2 id="pin-modal-title">Enter PIN</h2>
+      <p id="pin-modal-hint" class="hint"></p>
+      <div class="row">
+        <input type="password" id="input-pin" inputmode="numeric" pattern="[0-9]*" placeholder="PIN" autocomplete="off">
+      </div>
+      <div class="row" id="pin-confirm-row" hidden>
+        <input type="password" id="input-pin-confirm" inputmode="numeric" pattern="[0-9]*" placeholder="Confirm PIN" autocomplete="off">
+      </div>
+      <p id="pin-error" class="hint pin-error" hidden></p>
+      <div class="modal-actions">
+        <button class="btn" value="cancel" type="submit">Cancel</button>
+        <button id="btn-pin-confirm" class="btn" type="button">OK</button>
       </div>
     </form>
   </dialog>

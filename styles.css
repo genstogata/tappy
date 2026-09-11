@@ -96,6 +96,26 @@ html, body {
   border-color: #f3b4b4;
 }
 
+.btn-lock {
+  font-size: 18px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--tile-border);
+  background: #f8f9fb;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn-lock.locked {
+  border-color: #f3b4b4;
+  background: #fff5f5;
+}
+
+.pin-error {
+  color: var(--danger);
+}
+
 .offline-disclaimer {
   margin: 0;
   padding: 6px 12px;

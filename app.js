@@ -3,11 +3,11 @@
 
   const STORAGE_KEY = "tappy.app.v2";
   const LEGACY_STORAGE_KEY = "tappy.students.v1"; // single-roster format from before multi-class support
-  const MAX_CLASSES = 5;
+  const MAX_CLASSES = 6;
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
-  const APP_VERSION = "v24"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
+  const APP_VERSION = "v25"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -484,14 +484,111 @@
       classSelect.appendChild(opt);
     }
     const hasClasses = state.classes.length > 0;
-    document.getElementById("btn-create-class").disabled = state.classes.length >= MAX_CLASSES;
-    document.getElementById("btn-delete-class").disabled = !hasClasses;
-    document.getElementById("btn-roster").disabled = !hasClasses;
-    document.getElementById("btn-report").disabled = !hasClasses;
-    document.getElementById("btn-reset").disabled = !hasClasses;
+    document.getElementById("btn-create-class").disabled = locked || state.classes.length >= MAX_CLASSES;
+    document.getElementById("btn-delete-class").disabled = locked || !hasClasses;
+    document.getElementById("btn-roster").disabled = locked || !hasClasses;
+    document.getElementById("btn-report").disabled = locked || !hasClasses;
+    document.getElementById("btn-reset").disabled = locked || !hasClasses;
   }
 
   classSelect.addEventListener("change", () => switchClass(classSelect.value));
+
+  // ---------- Lock controls ----------
+  // Soft deterrent only (PIN is stored in plain text) — meant to stop casual tampering, not determined students.
+  const LOCK_PIN_KEY = "tappy.lockPin.v1";
+  const LOCKED_KEY = "tappy.locked.v1";
+  let locked = localStorage.getItem(LOCKED_KEY) === "1";
+
+  const btnLock = document.getElementById("btn-lock");
+  const modalPin = document.getElementById("modal-pin");
+  const pinTitle = document.getElementById("pin-modal-title");
+  const pinHint = document.getElementById("pin-modal-hint");
+  const inputPin = document.getElementById("input-pin");
+  const pinConfirmRow = document.getElementById("pin-confirm-row");
+  const inputPinConfirm = document.getElementById("input-pin-confirm");
+  const pinError = document.getElementById("pin-error");
+  const btnPinConfirm = document.getElementById("btn-pin-confirm");
+  let pinMode = null; // "setup" | "unlock"
+
+  function getStoredPin() {
+    return localStorage.getItem(LOCK_PIN_KEY) || "";
+  }
+
+  function setLocked(value) {
+    locked = value;
+    localStorage.setItem(LOCKED_KEY, value ? "1" : "0");
+    btnLock.textContent = value ? "🔒" : "🔓";
+    btnLock.classList.toggle("locked", value);
+    btnLock.title = value ? "Unlock controls" : "Lock controls";
+    btnLock.setAttribute("aria-label", btnLock.title);
+    renderClassUI();
+  }
+
+  function openPinModal(mode) {
+    pinMode = mode;
+    inputPin.value = "";
+    inputPinConfirm.value = "";
+    pinError.hidden = true;
+    if (mode === "setup") {
+      pinTitle.textContent = "Set a PIN";
+      pinHint.textContent = "This PIN will be required to unlock the controls.";
+      pinConfirmRow.hidden = false;
+    } else {
+      pinTitle.textContent = "Enter PIN";
+      pinHint.textContent = "Enter the PIN to unlock the controls.";
+      pinConfirmRow.hidden = true;
+    }
+    modalPin.showModal();
+    inputPin.focus();
+  }
+
+  function showPinError(msg) {
+    pinError.textContent = msg;
+    pinError.hidden = false;
+  }
+
+  btnPinConfirm.addEventListener("click", () => {
+    const pin = inputPin.value.trim();
+    if (pinMode === "setup") {
+      if (!pin) { showPinError("PIN can't be empty."); return; }
+      if (pin !== inputPinConfirm.value.trim()) { showPinError("PINs don't match."); return; }
+      localStorage.setItem(LOCK_PIN_KEY, pin);
+      modalPin.close();
+      setLocked(true);
+    } else {
+      if (pin === getStoredPin()) {
+        modalPin.close();
+        setLocked(false);
+      } else {
+        showPinError("Incorrect PIN.");
+        inputPin.value = "";
+        inputPin.focus();
+      }
+    }
+  });
+
+  inputPin.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (pinMode === "setup") inputPinConfirm.focus();
+    else btnPinConfirm.click();
+  });
+  inputPinConfirm.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      btnPinConfirm.click();
+    }
+  });
+
+  btnLock.addEventListener("click", () => {
+    if (locked) {
+      openPinModal("unlock");
+    } else if (!getStoredPin()) {
+      openPinModal("setup");
+    } else {
+      setLocked(true);
+    }
+  });
 
   document.getElementById("btn-add-student").addEventListener("click", () => {
     const firstEl = document.getElementById("input-first");
@@ -687,6 +784,10 @@
   renderClassUI();
   renderGrid();
   renderRosterList();
+  btnLock.textContent = locked ? "🔒" : "🔓";
+  btnLock.classList.toggle("locked", locked);
+  btnLock.title = locked ? "Unlock controls" : "Lock controls";
+  btnLock.setAttribute("aria-label", btnLock.title);
   document.getElementById("app-version").textContent = APP_VERSION;
 
   const btnCheckUpdate = document.getElementById("btn-check-update");
