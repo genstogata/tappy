@@ -11,6 +11,7 @@ Tappy works entirely in the browser — there's no server, account, or internet 
 - **Multiple classes** — create and switch between up to 5 class rosters (e.g., one per period).
 - **Roster management** — add students one at a time, or import a whole class at once.
 - **Flexible import** — paste a list of names, accepting either `First Last` or `Last, First` (comma-separated) formats, one student per line.
+- **PIN Lock** - once your class is set up, lock out controls with a PIN (convenience feature, not secure!)
 - **Daily report** — view total times out, number of times out, and current status per student; expand a student's row to see the exact local time of each tap-out/tap-in; export the report as CSV or print it.
 - **Reset day** — clear all timers/totals to start a fresh day without losing the roster.
 - **Offline & private** — all data is stored locally in the browser (`localStorage`) and never leaves the device; nothing is synced between devices, so remember to export a report before switching devices or clearing browser data.
