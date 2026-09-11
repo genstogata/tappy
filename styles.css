@@ -101,15 +101,15 @@ html, body {
   line-height: 1;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid var(--tile-border);
-  background: #f8f9fb;
+  border: 1px solid #f3b4b4;
+  background: #fff0f0;
   cursor: pointer;
   touch-action: manipulation;
 }
 
 .btn-lock.locked {
-  border-color: #f3b4b4;
-  background: #fff5f5;
+  border-color: #a8dab5;
+  background: #eefbf0;
 }
 
 .lock-control {
