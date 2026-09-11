@@ -112,6 +112,23 @@ html, body {
   background: #fff5f5;
 }
 
+.lock-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lock-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+.lock-label.locked {
+  color: var(--danger);
+}
+
 .pin-error {
   color: var(--danger);
 }

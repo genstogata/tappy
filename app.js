@@ -7,7 +7,7 @@
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
-  const APP_VERSION = "v26"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
+  const APP_VERSION = "v27"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -501,6 +501,7 @@
   let locked = localStorage.getItem(LOCKED_KEY) === "1";
 
   const btnLock = document.getElementById("btn-lock");
+  const lockLabel = document.getElementById("lock-label");
   const modalPin = document.getElementById("modal-pin");
   const pinTitle = document.getElementById("pin-modal-title");
   const pinHint = document.getElementById("pin-modal-hint");
@@ -523,6 +524,8 @@
     btnLock.classList.toggle("locked", value);
     btnLock.title = value ? "Unlock controls" : "Lock controls";
     btnLock.setAttribute("aria-label", btnLock.title);
+    lockLabel.textContent = value ? "LOCKED" : "UNLOCKED";
+    lockLabel.classList.toggle("locked", value);
     renderClassUI();
   }
 
@@ -842,6 +845,8 @@
   btnLock.classList.toggle("locked", locked);
   btnLock.title = locked ? "Unlock controls" : "Lock controls";
   btnLock.setAttribute("aria-label", btnLock.title);
+  lockLabel.textContent = locked ? "LOCKED" : "UNLOCKED";
+  lockLabel.classList.toggle("locked", locked);
   document.getElementById("app-version").textContent = APP_VERSION;
 
   const btnCheckUpdate = document.getElementById("btn-check-update");
