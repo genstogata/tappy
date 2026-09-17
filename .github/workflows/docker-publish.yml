@@ -113,7 +113,7 @@ jobs:
             if curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          for path in / /app.js /styles.css /service-worker.js /manifest.json /icons/icon-192.png; do
+          for path in / /app.js /db.js /styles.css /service-worker.js /manifest.json /icons/icon-192.png; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$path")
             echo "$path -> $code"
             [ "$code" = "200" ] || exit 1

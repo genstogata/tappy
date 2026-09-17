@@ -19,7 +19,7 @@ COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Only the files the browser actually needs. LICENSE is included because the
 # image redistributes the program.
-COPY index.html app.js styles.css service-worker.js manifest.json LICENSE /usr/share/nginx/html/
+COPY index.html app.js db.js styles.css service-worker.js manifest.json LICENSE /usr/share/nginx/html/
 COPY icons/ /usr/share/nginx/html/icons/
 COPY sample-data/ /usr/share/nginx/html/sample-data/
 
@@ -32,7 +32,8 @@ COPY sample-data/ /usr/share/nginx/html/sample-data/
 # copied files and cannot chmod them. The final USER restores the unprivileged
 # user so the running container is still hardened.
 USER root
-RUN chmod -R a+rX /usr/share/nginx/html
+RUN apk upgrade --no-cache \
+  && chmod -R a+rX /usr/share/nginx/html
 USER 101
 
 EXPOSE 8080
