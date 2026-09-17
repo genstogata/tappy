@@ -100,6 +100,8 @@
       <p id="report-log-summary" class="hint"></p>
       <div class="modal-actions">
         <button id="btn-export-csv" class="btn" type="button" title="Every session ever recorded, across all classes and days">Export History (CSV)</button>
+        <button id="btn-import-history-csv" class="btn" type="button" title="Merge another Tappy history CSV into this device">Import/Merge History CSV</button>
+        <button id="btn-undo-import" class="btn" type="button" title="Undo the most recent history import merge">Undo Last Import</button>
         <button id="btn-export-today-csv" class="btn" type="button" title="Just today's totals for the current class">Export Today (CSV)</button>
         <button id="btn-print" class="btn" type="button">Print</button>
         <button class="btn" value="close">Close</button>
@@ -157,7 +159,10 @@
     · <button id="btn-check-update" class="link-btn" type="button">Check for updates</button>
   </footer>
 
+  <input id="input-history-import-file" type="file" accept=".csv,text/csv" hidden>
+
 </div>
+<script src="db.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

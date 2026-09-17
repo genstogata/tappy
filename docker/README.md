@@ -65,7 +65,8 @@ students. It is not student data. But if you want to minimise it:
 
 Being explicit, because it matters for a classroom device:
 
-- **No encryption at rest.** Data sits in the browser's IndexedDB/localStorage in
+- **No encryption at rest.** Data sits in the browser's IndexedDB (with temporary
+  localStorage fallback/migration compatibility) in
   plain text. Anyone with the unlocked device *and* devtools can read it. OS
   device encryption (FileVault, BitLocker, iOS passcode) protects against theft
   and stolen backups; it does not protect against a curious student on an
@@ -81,14 +82,14 @@ Being explicit, because it matters for a classroom device:
 
 ```bash
 # 1. Pull the image. Pin the version in production — see "Versioning" below.
-docker pull af416/tappy:v31
+docker pull af416/tappy:v32
 
 # 2. Run it (no ports published — the tunnel reaches it over the network)
 docker run -d --name tappy --restart unless-stopped \
   --read-only --tmpfs /var/cache/nginx --tmpfs /tmp \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --network your-tunnel-network \
-  af416/tappy:v31
+  af416/tappy:v32
 ```
 
 Then point your tunnel's public hostname at `http://tappy:8080`.
@@ -109,7 +110,7 @@ place to change a version.
 
 | Tag | Moves? | Use it for |
 |---|---|---|
-| `v31` | ❌ never | **Production.** A deploy can't surprise you. |
+| `v32` | ❌ never | **Production.** A deploy can't surprise you. |
 | `latest` | ✅ | Whatever was pushed most recently to the default branch. |
 | `beta` | ✅ | Beta testing (published from the `beta` branch). |
 | `sha-abc1234` | ❌ never | Debugging a specific commit. |
@@ -123,11 +124,11 @@ place to change a version.
 > | `genstogata/tappy-beta` | `beta` | `beta` |
 >
 > So today, pushing `beta` to `tappy-beta` publishes `latest` (and `beta`, and
-> `v31`). Once the code is merged to `main` in `genstogata/tappy`, pushing
+> `v32`). Once the code is merged to `main` in `genstogata/tappy`, pushing
 > `main` there will publish `latest` instead. Either way `latest` always points
 > at the newest build from that repo's default branch.
 >
-> If you want a deploy that never changes under you, pin `v31`.
+> If you want a deploy that never changes under you, pin `v32`.
 
 ### Cutting a new version
 

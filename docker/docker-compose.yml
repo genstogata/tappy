@@ -17,9 +17,9 @@ services:
   tappy:
     # Pin the exact app version in production so a deploy never changes under
     # you. `latest` tracks the released version and `beta` the beta branch;
-    # both move, so prefer a pinned tag like :v31 for a classroom device.
+    # both move, so prefer a pinned tag like :v32 for a classroom device.
     # Available tags: https://hub.docker.com/r/af416/tappy/tags
-    image: af416/tappy:v31
+    image: af416/tappy:v32
     # To build locally instead of pulling from Docker Hub, comment out `image:`
     # above and uncomment the next line (run from the repository root):
     # build:

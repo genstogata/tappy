@@ -1,9 +1,10 @@
 // Bump this on every deploy so clients pick up new files instead of stale cache.
-const CACHE_NAME = "tappy-cache-v31";
+const CACHE_NAME = "tappy-cache-v32";
 const PRECACHE_URLS = [
   "./",
   "./index.html",
   "./styles.css",
+  "./db.js",
   "./app.js",
   "./manifest.json",
   "./icons/icon-192.png",
@@ -15,7 +16,7 @@ const PRECACHE_URLS = [
 
 // App-shell files that define the running version — always prefer network for these so a fresh
 // load online never depends on the SW update lifecycle (unreliable on iOS Safari/home-screen PWA).
-const APP_SHELL_SUFFIXES = ["/", "/index.html", "/app.js", "/styles.css", "/manifest.json"];
+const APP_SHELL_SUFFIXES = ["/", "/index.html", "/app.js", "/db.js", "/styles.css", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

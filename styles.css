@@ -30,6 +30,7 @@ html, body {
   height: 100dvh;
   display: flex;
   flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 .app-header {
@@ -42,6 +43,7 @@ html, body {
   background: #ffffff;
   border-bottom: 1px solid var(--tile-border);
   flex-wrap: wrap;
+  padding-top: max(8px, env(safe-area-inset-top, 0));
 }
 
 .app-header h1 {
@@ -413,6 +415,7 @@ textarea#input-import {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 12px;
+  flex-wrap: wrap;
 }
 
 /* Holds the destructive "Clear history" control, kept visually apart from the export/print actions. */
@@ -497,4 +500,73 @@ textarea#input-import {
   color: var(--muted);
   text-decoration: none;
   cursor: default;
+}
+
+@media (max-width: 900px) {
+  .app-header {
+    gap: 10px;
+  }
+
+  .toolbar {
+    width: 100%;
+  }
+
+  .toolbar .btn {
+    flex: 1 1 calc(50% - 8px);
+    min-height: 42px;
+  }
+
+  #class-select {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .modal {
+    width: min(680px, 96vw);
+    max-height: 92dvh;
+  }
+
+  .modal-content {
+    max-height: 92dvh;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0));
+  }
+}
+
+@media (max-width: 640px) {
+  .app-header h1 {
+    font-size: 18px;
+  }
+
+  .title-group {
+    width: 100%;
+  }
+
+  .toolbar .btn {
+    flex: 1 1 100%;
+  }
+
+  .offline-disclaimer {
+    font-size: 11px;
+    text-align: left;
+    padding: 8px 10px;
+  }
+
+  #report-table {
+    font-size: 12px;
+  }
+
+  #report-table th,
+  #report-table td {
+    padding: 5px 6px;
+  }
+
+  .col-details,
+  td.col-details {
+    display: none;
+  }
+
+  .session-detail-list {
+    font-size: 12px;
+    padding-left: 16px;
+  }
 }

@@ -3,11 +3,17 @@
 
   const STORAGE_KEY = "tappy.app.v2";
   const LEGACY_STORAGE_KEY = "tappy.students.v1"; // single-roster format from before multi-class support
+  const LOG_KEY = "tappy.log.v1";
+  const LOG_SEEDED_KEY = "tappy.logSeeded.v1";
+  const LOCK_PIN_KEY = "tappy.lockPin.v1";
+  const LOCKED_KEY = "tappy.locked.v1";
+  const MIGRATION_DONE_KEY = "migratedLocalStorageV1";
+  const MAX_LOG_ROWS = 10000;
   const MAX_CLASSES = 6;
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
-  const APP_VERSION = "v31"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
+  const APP_VERSION = "v32"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -53,13 +59,121 @@
     return { activeClassId, classes };
   }
 
-  function load() {
+  let historyLog = [];
+  let logSeeded = false;
+  let lastImportKeys = [];
+  let lockPin = "";
+  let locked = false;
+  let writeChain = Promise.resolve();
+
+  function enqueueWrite(task, label) {
+    writeChain = writeChain
+      .then(task)
+      .catch((e) => {
+        console.error(`Failed to persist ${label}`, e);
+        warnStorageFull();
+      });
+    return writeChain;
+  }
+
+  async function migrateLocalStorageToIndexedDb() {
+    if (!window.TappyDB) return;
+    const already = await window.TappyDB.getMeta(MIGRATION_DONE_KEY);
+    if (already === true) return;
+
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        state = normalizeState(JSON.parse(raw)) || { activeClassId: "", classes: [] };
+      const currentState = await window.TappyDB.loadState();
+      if (!currentState) {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = normalizeState(JSON.parse(raw));
+          if (parsed) await window.TappyDB.saveState(parsed);
+        } else {
+          const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+          const legacyParsed = legacyRaw ? JSON.parse(legacyRaw) : [];
+          const legacyStudents = Array.isArray(legacyParsed)
+            ? legacyParsed.filter(s => s && typeof s === "object").map(normalizeStudent)
+            : [];
+          if (legacyStudents.length > 0) {
+            const first = makeClass("Class 1", legacyStudents);
+            await window.TappyDB.saveState({ activeClassId: first.id, classes: [first] });
+          }
+        }
+      }
+
+      const currentHistory = await window.TappyDB.loadHistory();
+      if (!Array.isArray(currentHistory) || currentHistory.length === 0) {
+        const logRaw = localStorage.getItem(LOG_KEY);
+        const parsedLog = logRaw ? JSON.parse(logRaw) : [];
+        if (Array.isArray(parsedLog) && parsedLog.length > 0) {
+          await window.TappyDB.saveHistory(parsedLog);
+        }
+      }
+
+      await window.TappyDB.saveLogSeeded(localStorage.getItem(LOG_SEEDED_KEY) === "1");
+      await window.TappyDB.saveLockPin(localStorage.getItem(LOCK_PIN_KEY) || "");
+      await window.TappyDB.saveLocked(localStorage.getItem(LOCKED_KEY) === "1");
+      await window.TappyDB.setMeta(MIGRATION_DONE_KEY, true);
+
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      localStorage.removeItem(LOG_KEY);
+      localStorage.removeItem(LOG_SEEDED_KEY);
+      localStorage.removeItem(LOCK_PIN_KEY);
+      localStorage.removeItem(LOCKED_KEY);
+    } catch (e) {
+      console.error("LocalStorage to IndexedDB migration failed", e);
+    }
+  }
+
+  function normalizeLogRow(r) {
+    if (!r || typeof r !== "object") return null;
+    if (typeof r.start !== "number" || typeof r.end !== "number") return null;
+    const cls = singleLine(r.cls || "");
+    const name = singleLine(r.name || "");
+    const sig = makeSessionSignature(cls, name, r.start, r.end);
+    return {
+      key: typeof r.key === "string" ? r.key : sig,
+      sig,
+      date: typeof r.date === "string" ? r.date : localDateKey(r.start),
+      clsId: typeof r.clsId === "string" ? r.clsId : "",
+      cls,
+      studentId: typeof r.studentId === "string" ? r.studentId : "",
+      name,
+      n: (typeof r.n === "number" && r.n > 0) ? r.n : 1,
+      start: r.start,
+      end: r.end
+    };
+  }
+
+  async function load() {
+    try {
+      if (window.TappyDB) {
+        await window.TappyDB.init();
+        await migrateLocalStorageToIndexedDb();
+
+        const dbState = await window.TappyDB.loadState();
+        state = normalizeState(dbState) || { activeClassId: "", classes: [] };
+        historyLog = (await window.TappyDB.loadHistory()).map(normalizeLogRow).filter(Boolean);
+        logSeeded = await window.TappyDB.loadLogSeeded();
+        const lockState = await window.TappyDB.loadLock();
+        lockPin = String(lockState.pin || "");
+        locked = !!lockState.locked;
+        lastImportKeys = await window.TappyDB.loadLastImportKeys();
       } else {
-        // No default class on first run — only migrate legacy single-roster data, if any.
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          state = normalizeState(JSON.parse(raw)) || { activeClassId: "", classes: [] };
+        }
+        const logRaw = localStorage.getItem(LOG_KEY);
+        const parsedLog = logRaw ? JSON.parse(logRaw) : [];
+        historyLog = Array.isArray(parsedLog) ? parsedLog.map(normalizeLogRow).filter(Boolean) : [];
+        logSeeded = localStorage.getItem(LOG_SEEDED_KEY) === "1";
+        lockPin = localStorage.getItem(LOCK_PIN_KEY) || "";
+        locked = localStorage.getItem(LOCKED_KEY) === "1";
+      }
+
+      if (!state.classes.length) {
         const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
         const legacyParsed = legacyRaw ? JSON.parse(legacyRaw) : [];
         const legacyStudents = Array.isArray(legacyParsed)
@@ -68,21 +182,40 @@
         if (legacyStudents.length > 0) {
           const first = makeClass("Class 1", legacyStudents);
           state = { activeClassId: first.id, classes: [first] };
-        } else {
-          state = { activeClassId: "", classes: [] };
         }
       }
     } catch (e) {
       console.error("Failed to load app state", e);
-      state = { activeClassId: "", classes: [] };
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        state = raw ? (normalizeState(JSON.parse(raw)) || { activeClassId: "", classes: [] }) : { activeClassId: "", classes: [] };
+        const logRaw = localStorage.getItem(LOG_KEY);
+        const parsedLog = logRaw ? JSON.parse(logRaw) : [];
+        historyLog = Array.isArray(parsedLog) ? parsedLog.map(normalizeLogRow).filter(Boolean) : [];
+        logSeeded = localStorage.getItem(LOG_SEEDED_KEY) === "1";
+        lockPin = localStorage.getItem(LOCK_PIN_KEY) || "";
+        locked = localStorage.getItem(LOCKED_KEY) === "1";
+      } catch {
+        state = { activeClassId: "", classes: [] };
+        historyLog = [];
+        logSeeded = false;
+        lockPin = "";
+        locked = false;
+      }
+      lastImportKeys = [];
     }
+
     if (state.classes.length > 0 && !activeClass()) {
       state.activeClassId = state.classes[0].id;
     }
-    seedLogFromExistingState();
+    await seedLogFromExistingState();
   }
 
   function save() {
+    if (window.TappyDB) {
+      enqueueWrite(() => window.TappyDB.saveState(state), "app state");
+      return;
+    }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
@@ -96,14 +229,7 @@
   }
 
   // ---------- Running history log ----------
-  // A browser page can't append to a file on disk, so the durable running record lives here instead:
-  // an append-only, one-row-per-closed-session log kept in localStorage. Exports dump the *whole* log,
-  // so every export is a complete, growing copy and can safely replace the previous one.
-  // Rows are keyed by class|student|start-time and never mutated, which is what makes this append-safe:
-  // re-exporting an existing session is a no-op instead of a duplicate.
-  const LOG_KEY = "tappy.log.v1";
-  const LOG_SEEDED_KEY = "tappy.logSeeded.v1";
-  const MAX_LOG_ROWS = 10000; // ~1.2 MB; keeps the log comfortably inside the usual ~5 MB localStorage quota
+  // Running history is persisted in IndexedDB as an append-safe session log.
 
   let storageWarned = false;
 
@@ -125,55 +251,52 @@
   }
 
   function readLog() {
-    try {
-      const raw = localStorage.getItem(LOG_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(r => r && typeof r === "object" &&
-        typeof r.key === "string" && typeof r.start === "number" && typeof r.end === "number");
-    } catch (e) {
-      console.error("Failed to read history log", e);
-      return [];
-    }
+    return historyLog;
   }
 
   function writeLog(rows) {
     // Oldest rows are dropped first (the array stays in append order). On a quota error we halve the log
     // and retry, so a nearly-full device degrades by trimming history instead of losing the record outright.
     let next = rows.length > MAX_LOG_ROWS ? rows.slice(rows.length - MAX_LOG_ROWS) : rows;
-    for (;;) {
-      try {
-        localStorage.setItem(LOG_KEY, JSON.stringify(next));
-        return next.length;
-      } catch (e) {
-        console.error("Failed to write history log", e);
-        warnStorageFull();
-        if (next.length === 0) return -1;
-        next = next.length > 1 ? next.slice(Math.floor(next.length / 2)) : [];
-      }
+    historyLog = next;
+    if (window.TappyDB) {
+      enqueueWrite(() => window.TappyDB.saveHistory(historyLog), "history log");
+      return next.length;
     }
+    try {
+      localStorage.setItem(LOG_KEY, JSON.stringify(historyLog));
+    } catch (e) {
+      console.error("Failed to write history log", e);
+      warnStorageFull();
+    }
+    return next.length;
+  }
+
+  function makeSessionSignature(clsName, studentName, start, end) {
+    return `${singleLine(clsName).toLowerCase()}|${singleLine(studentName).toLowerCase()}|${start}|${end}`;
   }
 
   // Appends every closed session of a class to the log. Idempotent: returns the number of new rows added.
   function appendLogRows(cls) {
     if (!cls) return 0;
     const rows = readLog();
-    const seen = new Set(rows.map(r => r.key));
+    const seen = new Set(rows.map(r => r.sig || makeSessionSignature(r.cls, r.name, r.start, r.end)));
     const added = [];
     for (const student of cls.students) {
       student.sessions.forEach((sess, i) => {
-        // Keyed on the session's start time (not its index) so a second Reset Day on the same date
-        // can't be mistaken for a duplicate of an already-archived session.
-        const key = `${cls.id}|${student.id}|${sess.start}`;
-        if (seen.has(key)) return;
-        seen.add(key);
+        const clsName = singleLine(cls.name);
+        const studentName = singleLine(`${student.first} ${student.last}`);
+        const sig = makeSessionSignature(clsName, studentName, sess.start, sess.end);
+        if (seen.has(sig)) return;
+        seen.add(sig);
         added.push({
-          key,
+          key: sig,
+          sig,
           date: localDateKey(sess.start), // dated from when the student actually left, not from "today"
           clsId: cls.id,
-          cls: singleLine(cls.name),
+          cls: clsName,
           studentId: student.id,
-          name: singleLine(`${student.first} ${student.last}`),
+          name: studentName,
           n: i + 1,
           start: sess.start,
           end: sess.end
@@ -194,11 +317,16 @@
 
   // One-time backfill for sessions recorded before the log existed. Harmless to re-run (appendLogRows
   // dedupes), so the flag is only set once the write actually succeeds.
-  function seedLogFromExistingState() {
-    if (localStorage.getItem(LOG_SEEDED_KEY) === "1") return;
+  async function seedLogFromExistingState() {
+    if (logSeeded) return;
     try {
       for (const cls of state.classes) appendLogRows(cls);
-      localStorage.setItem(LOG_SEEDED_KEY, "1");
+      logSeeded = true;
+      if (window.TappyDB) {
+        await window.TappyDB.saveLogSeeded(true);
+      } else {
+        localStorage.setItem(LOG_SEEDED_KEY, "1");
+      }
     } catch (e) {
       console.error("Failed to seed history log", e);
     }
@@ -499,6 +627,178 @@
     return added;
   }
 
+  function parseCsvRows(text) {
+    const rows = [];
+    let row = [];
+    let value = "";
+    let i = 0;
+    let inQuotes = false;
+    while (i < text.length) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') {
+            value += '"';
+            i += 2;
+            continue;
+          }
+          inQuotes = false;
+          i++;
+          continue;
+        }
+        value += ch;
+        i++;
+        continue;
+      }
+      if (ch === '"') {
+        inQuotes = true;
+        i++;
+        continue;
+      }
+      if (ch === ",") {
+        row.push(value);
+        value = "";
+        i++;
+        continue;
+      }
+      if (ch === "\n") {
+        row.push(value);
+        rows.push(row);
+        row = [];
+        value = "";
+        i++;
+        continue;
+      }
+      if (ch === "\r") {
+        i++;
+        continue;
+      }
+      value += ch;
+      i++;
+    }
+    if (value.length > 0 || row.length > 0) {
+      row.push(value);
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  function findHeaderIndex(rows) {
+    for (let i = 0; i < rows.length; i++) {
+      const lower = rows[i].map(c => String(c || "").trim().toLowerCase());
+      if (lower.includes("class") && lower.includes("student")) return i;
+    }
+    return -1;
+  }
+
+  function indexMap(header) {
+    const map = new Map();
+    header.forEach((h, i) => map.set(String(h || "").trim().toLowerCase(), i));
+    return map;
+  }
+
+  function pick(map, names) {
+    for (const n of names) {
+      if (map.has(n)) return map.get(n);
+    }
+    return -1;
+  }
+
+  function parseImportHistoryRows(text) {
+    const rows = parseCsvRows(text);
+    const headerIndex = findHeaderIndex(rows);
+    if (headerIndex < 0) return { parsed: [], error: "Could not find a Tappy history header row." };
+    const header = rows[headerIndex];
+    const map = indexMap(header);
+
+    const idxClass = pick(map, ["class", "class name"]);
+    const idxStudent = pick(map, ["student", "name"]);
+    const idxStartIso = pick(map, ["out at (iso 8601)", "out at iso", "start iso"]);
+    const idxEndIso = pick(map, ["in at (iso 8601)", "in at iso", "end iso"]);
+    const idxStartMs = pick(map, ["out at (ms)", "start (ms)", "start ms"]);
+    const idxEndMs = pick(map, ["in at (ms)", "end (ms)", "end ms"]);
+    const idxSessionKey = pick(map, ["session key", "session id", "key"]);
+
+    if (idxClass < 0 || idxStudent < 0 || (idxStartIso < 0 && idxStartMs < 0) || (idxEndIso < 0 && idxEndMs < 0)) {
+      return { parsed: [], error: "Unsupported CSV format. Export from Tappy and re-import that file." };
+    }
+
+    const parsed = [];
+    for (let i = headerIndex + 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length === 0) continue;
+      const cls = singleLine(row[idxClass] || "");
+      const name = singleLine(row[idxStudent] || "");
+      if (!cls || !name) continue;
+
+      const start = idxStartIso >= 0
+        ? Date.parse(row[idxStartIso] || "")
+        : Number(row[idxStartMs]);
+      const end = idxEndIso >= 0
+        ? Date.parse(row[idxEndIso] || "")
+        : Number(row[idxEndMs]);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) continue;
+
+      const sig = (idxSessionKey >= 0 && row[idxSessionKey])
+        ? singleLine(row[idxSessionKey])
+        : makeSessionSignature(cls, name, start, end);
+
+      parsed.push({
+        key: sig,
+        sig,
+        date: localDateKey(start),
+        clsId: "",
+        cls,
+        studentId: "",
+        name,
+        n: 1,
+        start,
+        end
+      });
+    }
+    return { parsed, error: "" };
+  }
+
+  function mergeImportedHistory(rowsToMerge) {
+    const existing = readLog();
+    const seen = new Set(existing.map(r => r.sig || makeSessionSignature(r.cls, r.name, r.start, r.end)));
+    const added = [];
+    let skipped = 0;
+    for (const r of rowsToMerge) {
+      const sig = r.sig || makeSessionSignature(r.cls, r.name, r.start, r.end);
+      if (seen.has(sig)) {
+        skipped++;
+        continue;
+      }
+      seen.add(sig);
+      added.push({ ...r, key: sig, sig });
+    }
+
+    if (added.length > 0) {
+      writeLog(existing.concat(added).sort((a, b) => a.start - b.start));
+    }
+
+    lastImportKeys = added.map(r => r.sig);
+    if (window.TappyDB) {
+      enqueueWrite(() => window.TappyDB.saveLastImportKeys(lastImportKeys), "last import keys");
+    }
+    return { added: added.length, skipped };
+  }
+
+  function undoLastImportedMerge() {
+    if (!lastImportKeys.length) return 0;
+    const removeSet = new Set(lastImportKeys);
+    const before = readLog();
+    const next = before.filter(r => !removeSet.has(r.sig || r.key));
+    const removed = before.length - next.length;
+    if (removed > 0) writeLog(next);
+    lastImportKeys = [];
+    if (window.TappyDB) {
+      enqueueWrite(() => window.TappyDB.saveLastImportKeys([]), "clear last import keys");
+    }
+    return removed;
+  }
+
   function resetDay() {
     const cls = activeClass();
     if (!cls) return;
@@ -654,10 +954,7 @@
 
   // ---------- Lock controls ----------
   // Soft deterrent only (PIN is stored in plain text) — meant to stop casual tampering, not determined students.
-  const LOCK_PIN_KEY = "tappy.lockPin.v1";
-  const LOCKED_KEY = "tappy.locked.v1";
   const MAX_PIN_LEN = 8;
-  let locked = localStorage.getItem(LOCKED_KEY) === "1";
 
   const btnLock = document.getElementById("btn-lock");
   const lockLabel = document.getElementById("lock-label");
@@ -673,12 +970,16 @@
   let pinBuffer = "";
 
   function getStoredPin() {
-    return localStorage.getItem(LOCK_PIN_KEY) || "";
+    return lockPin || "";
   }
 
   function setLocked(value) {
     locked = value;
-    localStorage.setItem(LOCKED_KEY, value ? "1" : "0");
+    if (window.TappyDB) {
+      enqueueWrite(() => window.TappyDB.saveLocked(value), "lock state");
+    } else {
+      localStorage.setItem(LOCKED_KEY, value ? "1" : "0");
+    }
     btnLock.textContent = value ? "🔒" : "🔓";
     btnLock.classList.toggle("locked", value);
     btnLock.title = value ? "Unlock controls" : "Lock controls";
@@ -758,7 +1059,12 @@
         updatePinDisplay();
         return;
       }
-      localStorage.setItem(LOCK_PIN_KEY, pinBuffer);
+      lockPin = pinBuffer;
+      if (window.TappyDB) {
+        enqueueWrite(() => window.TappyDB.saveLockPin(lockPin), "lock PIN");
+      } else {
+        localStorage.setItem(LOCK_PIN_KEY, lockPin);
+      }
       modalPin.close();
       setLocked(true);
       return;
@@ -966,7 +1272,7 @@
       ["Tappy Running History (cumulative — each export replaces the previous one)"],
       ["Exported At", formatClockTime(Date.now()), localDateKey(Date.now())],
       [],
-      ["Date", "Class", "Student", "Session #", "Out At (local time)", "In At (local time)",
+      ["Date", "Class", "Student", "Session #", "Session Key", "Out At (local time)", "In At (local time)",
        "Duration (sec)", "Duration", "Out At (ISO 8601)", "In At (ISO 8601)"]
     ];
     // Sorted chronologically by session start, which is what keeps a hand-merged multi-device CSV tidy.
@@ -978,6 +1284,7 @@
         r.cls,
         r.name,
         r.n,
+        r.sig || r.key || makeSessionSignature(r.cls, r.name, r.start, r.end),
         formatClockTime(r.start),
         formatClockTime(r.end),
         secs,
@@ -1009,6 +1316,50 @@
     appendLogRows(cls);
     updateLogSummary();
     downloadCsv(buildHistoryCsv(), `tappy-history-${localDateKey(Date.now())}.csv`);
+  });
+
+  const historyFileInput = document.getElementById("input-history-import-file");
+
+  document.getElementById("btn-import-history-csv").addEventListener("click", () => {
+    if (!historyFileInput) return;
+    historyFileInput.value = "";
+    historyFileInput.click();
+  });
+
+  historyFileInput.addEventListener("change", async (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    let text = "";
+    try {
+      text = await file.text();
+    } catch (e) {
+      alert("Could not read that CSV file.");
+      return;
+    }
+
+    const { parsed, error } = parseImportHistoryRows(text);
+    if (error) {
+      alert(error);
+      return;
+    }
+    if (parsed.length === 0) {
+      alert("No session rows were found to import.");
+      return;
+    }
+
+    const result = mergeImportedHistory(parsed);
+    updateLogSummary();
+    alert(`History merge complete. Added ${result.added} new session${result.added === 1 ? "" : "s"}; skipped ${result.skipped} duplicate${result.skipped === 1 ? "" : "s"}.`);
+  });
+
+  document.getElementById("btn-undo-import").addEventListener("click", () => {
+    const removed = undoLastImportedMerge();
+    updateLogSummary();
+    if (removed > 0) {
+      alert(`Undid last import merge and removed ${removed} session${removed === 1 ? "" : "s"}.`);
+    } else {
+      alert("Nothing to undo.");
+    }
   });
 
   document.getElementById("btn-export-today-csv").addEventListener("click", () => {
@@ -1045,8 +1396,17 @@
     if (count === 0) return;
     if (!confirm(`Permanently delete all ${count} archived sessions from this device?\n\nThis cannot be undone — export the history CSV first if you need a copy.\n\nNote: sessions still showing on the grid today aren't history yet, so they'll be archived again. Use "Reset Day" first if you want a clean slate.`)) return;
     try {
-      localStorage.removeItem(LOG_KEY);
-      localStorage.setItem(LOG_SEEDED_KEY, "1"); // nothing left to backfill; keeps a cleared log from reseeding
+      writeLog([]);
+      logSeeded = true;
+      lastImportKeys = [];
+      if (window.TappyDB) {
+        enqueueWrite(() => Promise.all([
+          window.TappyDB.saveLogSeeded(true),
+          window.TappyDB.saveLastImportKeys([])
+        ]), "clear history metadata");
+      } else {
+        localStorage.setItem(LOG_SEEDED_KEY, "1"); // nothing left to backfill; keeps a cleared log from reseeding
+      }
     } catch (e) {
       console.error("Failed to clear history log", e);
       warnStorageFull();
@@ -1062,18 +1422,21 @@
   });
 
   // ---------- Init ----------
-  load();
-  renderClassUI();
-  renderGrid();
-  renderRosterList();
-  updateLogSummary();
-  btnLock.textContent = locked ? "🔒" : "🔓";
-  btnLock.classList.toggle("locked", locked);
-  btnLock.title = locked ? "Unlock controls" : "Lock controls";
-  btnLock.setAttribute("aria-label", btnLock.title);
-  lockLabel.textContent = locked ? "LOCKED" : "UNLOCKED";
-  lockLabel.classList.toggle("locked", locked);
-  document.getElementById("app-version").textContent = APP_VERSION;
+  async function initApp() {
+    await load();
+    renderClassUI();
+    renderGrid();
+    renderRosterList();
+    updateLogSummary();
+    btnLock.textContent = locked ? "🔒" : "🔓";
+    btnLock.classList.toggle("locked", locked);
+    btnLock.title = locked ? "Unlock controls" : "Lock controls";
+    btnLock.setAttribute("aria-label", btnLock.title);
+    lockLabel.textContent = locked ? "LOCKED" : "UNLOCKED";
+    lockLabel.classList.toggle("locked", locked);
+    document.getElementById("app-version").textContent = APP_VERSION;
+  }
+  initApp();
 
   const btnCheckUpdate = document.getElementById("btn-check-update");
 

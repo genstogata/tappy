@@ -5,17 +5,17 @@ name: Publish Docker image
 # VERSIONING — one source of truth
 # --------------------------------
 # The image tag comes from APP_VERSION in app.js, which is bumped with
-#   scripts/bump-version.sh 31
+#   scripts/bump-version.sh 32
 # That script also updates CACHE_NAME in service-worker.js, so the app version,
 # the service-worker cache version and the Docker tag can never drift apart.
 #
-# Tags produced for APP_VERSION = "v31":
+# Tags produced for APP_VERSION = "v32":
 #   latest      — from the DEFAULT BRANCH of whichever repo this runs in.
 #                 Note this is per-repo: genstogata/tappy defaults to `main`,
 #                 genstogata/tappy-beta defaults to `beta`. So pushing `beta`
 #                 to tappy-beta DOES publish `latest`.
 #   beta        — from the beta branch, so beta testers get a moving target
-#   v31         — the exact app version, on every branch. Pin this in
+#   v32         — the exact app version, on every branch. Pin this in
 #                 production: it never moves.
 #   sha-abc1234 — the exact commit, for debugging
 #

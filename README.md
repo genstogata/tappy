@@ -8,14 +8,15 @@ Tappy works entirely in the browser — there's no server, account, or internet 
 
 - **Tap-to-toggle timers** — tap a student's tile to mark them "out"; tap again when they return.
 - **Color-coded alerts** — tiles turn yellow after 5 minutes out and red after 10 minutes out, so overdue students stand out.
-- **Multiple classes** — create and switch between up to 5 class rosters (e.g., one per period).
+- **Multiple classes** — create and switch between up to 6 class rosters (e.g., one per period).
 - **Roster management** — add students one at a time, or import a whole class at once.
 - **Flexible import** — paste a list of names, accepting either `First Last` or `Last, First` (comma-separated) formats, one student per line.
 - **PIN Lock** - once your class is set up, lock out controls with a PIN (convenience feature, not secure!)
 - **Daily report** — view total times out, number of times out, and current status per student; expand a student's row to see the exact local time of each tap-out/tap-in; export the report as CSV or print it.
 - **Running history** — every completed session is archived automatically to an on-device log that survives **Reset Day** and closing the app, so you can build up a term-long record instead of losing yesterday's data. Export the whole history as a single cumulative CSV at any time.
 - **Reset day** — archive today's sessions to the running history, then clear all timers/totals to start a fresh day without losing the roster or any past data.
-- **Offline & private** — all data is stored locally in the browser (`localStorage`) and never leaves the device; nothing is synced between devices, so remember to export a report before switching devices or clearing browser data.
+- **Offline & private** — all data is stored locally in the browser (`IndexedDB`) and never leaves the device; nothing is synced between devices, so remember to export a report before switching devices or clearing browser data.
+- **History import + undo** — import/merge a previously exported Tappy history CSV to combine records from another device, and undo the most recent import merge if needed.
 - **Installable PWA** — add it to your home screen/desktop for an app-like, offline-capable experience via the built-in service worker.
 
 ## Installation
@@ -24,21 +25,25 @@ Tappy is a static site with no build step or dependencies.
 
 ### Use it online
 
-Open the live site in a browser: https://genstogata.github.io/tappy/
+Open the live site in a browser: <https://genstogata.github.io/tappy/>
 
-Note: This site may not be always available in the future. Please consider hosting your own Tappy instance using Docker. 
+Note: This site may not be always available in the future. Please consider hosting your own Tappy instance using Docker.
 
 ### Run it locally
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/genstogata/tappy.git
    cd tappy
    ```
+
 2. Serve the folder with any static file server (opening `index.html` directly also works, though a local server ensures the service worker registers correctly). For example:
+
    ```bash
    npx serve .
    ```
+
 3. Open the served URL (e.g., `http://localhost:3000`) in your browser.
 
 ### Install as an app (PWA)
@@ -53,7 +58,7 @@ Tappy is also published as a Docker image, for running on your own server (e.g. 
 docker run -d --name tappy --restart unless-stopped \
   --read-only --tmpfs /var/cache/nginx --tmpfs /tmp \
   --security-opt no-new-privileges:true --cap-drop ALL \
-  -p 127.0.0.1:8080:8080 af416/tappy:v31
+   -p 127.0.0.1:8080:8080 af416/tappy:v32
 ```
 
 The container serves files and **stores no data** — no database, no volume, no server-side state. Rosters, timers and history all live in the browser on the teacher's device. It runs with a read-only filesystem and all capabilities dropped, so it *cannot* write to the host.
@@ -62,7 +67,7 @@ See [docker/README.md](docker/README.md) for the Cloudflare Tunnel setup, securi
 
 ## Usage
 
-1. **Create a class** — on first launch, click **+ Create Class** and give it a name (up to 5 classes).
+1. **Create a class** — on first launch, click **+ Create Class** and give it a name (up to 6 classes).
 2. **Add students** — click **Roster**, then either:
    - Type a first and last name and click **Add**, or
    - Paste a list of names (one per line, `First Last` or `Last, First`) into the import box and click **Import**.
@@ -70,6 +75,8 @@ See [docker/README.md](docker/README.md) for the Cloudflare Tunnel setup, securi
 4. **Watch for overdue students** — tiles turn yellow after 5 minutes and red after 10 minutes out.
 5. **View the report** — click **Report** to see each student's number of times out, current status, and total time out for the day. Click **Details** on a row to see the local clock time of each tap-out/tap-in. The report header shows the device's current local time so you can confirm the clock is correct. The footer of the report shows how many sessions are currently held in the running history.
    - **Export History (CSV)** saves *every* session ever recorded, across all classes and days, as one cumulative file. Each export is a complete replacement for the previous one, so you can just overwrite yesterday's file — or keep each dated export and the newest one is always the most complete.
+   - **Import/Merge History CSV** merges another exported Tappy history CSV into this device's running history. Existing sessions are deduplicated automatically.
+   - **Undo Last Import** removes only the sessions added by your most recent history import.
    - **Export Today (CSV)** saves just today's totals for the current class (the same summary as the table on screen).
    - **Print** prints the on-screen daily report, including the full timestamp log for every student.
 6. **Reset for a new day** — click **Reset Day**. Today's sessions are first archived to the running history, then all timers and totals are cleared while the roster stays intact.
@@ -90,7 +97,7 @@ Sample roster files in various formats are available in [sample-data/](sample-da
 
 ## Data & Privacy
 
-All student data is stored locally in your browser's `localStorage` and is never transmitted anywhere. Clearing your browser data, switching browsers, or switching devices will lose the data — including the running history — so export a CSV regularly if you need to keep records.
+All student data is stored locally in your browser's `IndexedDB` and is never transmitted anywhere. Clearing your browser data, switching browsers, or switching devices will lose the data — including the running history — so export a CSV regularly if you need to keep records.
 
 The running history is capped at 10,000 sessions (roughly 1.2 MB) to stay within typical browser storage limits; the oldest rows are trimmed first, and Tappy warns you if storage is full. Export periodically to keep everything.
 
