@@ -26,6 +26,8 @@ Tappy is a static site with no build step or dependencies.
 
 Open the live site in a browser: https://genstogata.github.io/tappy/
 
+Note: This site may not be always available in the future. Please consider hosting your own Tappy instance using Docker. 
+
 ### Run it locally
 
 1. Clone the repository:
