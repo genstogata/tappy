@@ -1,0 +1,12 @@
+# Keep the build context to just what the image needs.
+.git
+.gitignore
+.github
+.DS_Store
+**/.DS_Store
+
+# Docs and deployment helpers are not part of the served site.
+README.md
+docker/README.md
+docker/docker-compose.yml
+docker/docker-compose.tunnel-example.yml

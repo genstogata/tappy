@@ -1,1 +1,7 @@
 .DS_Store
+
+# Docker Compose environment files — these hold credentials (e.g. the
+# Cloudflare Tunnel token). Use docker/sample.env as the template.
+.env
+*.env
+!sample.env

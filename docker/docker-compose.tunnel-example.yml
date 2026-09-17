@@ -1,0 +1,48 @@
+# Example: Tappy + a Cloudflare Tunnel in one compose file.
+#
+# Use this if you would rather run a dedicated tunnel for Tappy than attach it
+# to a tunnel you already run. If you already have a working cloudflared
+# container, ignore this file and just join Tappy to that container's network
+# (see README.md, "Attaching to an existing tunnel").
+#
+# Setup:
+#   cp sample.env .env      # then edit .env and paste your tunnel token
+#   docker compose -f docker-compose.tunnel-example.yml up -d
+#
+# Get the token from:
+#   Cloudflare dashboard -> Zero Trust -> Networks -> Tunnels -> your tunnel
+# and set the tunnel's public hostname to point at http://tappy:8080
+# (Type HTTP — Cloudflare terminates TLS at its edge.)
+
+services:
+  tappy:
+    # Pin the exact app version in production (see docker-compose.yml).
+    image: af416/tappy:v31
+    container_name: tappy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - tappy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-tappy
+    restart: unless-stopped
+    # TUNNEL_TOKEN is read from the .env file next to this compose file.
+    # Compose fails fast with a clear message if it is unset.
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN:?TUNNEL_TOKEN is not set - copy sample.env to .env and add your tunnel token}
+    depends_on:
+      - tappy
+    networks:
+      - tappy
+
+networks:
+  tappy:
+    name: tappy

@@ -415,6 +415,17 @@ textarea#input-import {
   margin-top: 12px;
 }
 
+/* Holds the destructive "Clear history" control, kept visually apart from the export/print actions. */
+.modal-actions-secondary {
+  justify-content: flex-start;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+#report-log-summary {
+  margin: 10px 0 0;
+}
+
 #report-table {
   width: 100%;
   border-collapse: collapse;
