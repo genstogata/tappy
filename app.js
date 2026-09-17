@@ -7,7 +7,7 @@
   const WARN_MS = 5 * 60 * 1000;   // 5 minutes -> yellow
   const DANGER_MS = 10 * 60 * 1000; // 10 minutes -> red
   const GRID_GAP = 8;
-  const APP_VERSION = "v29"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
+  const APP_VERSION = "v30"; // keep in sync with CACHE_NAME in service-worker.js on every deploy
 
   /** @typedef {{id:string, first:string, last:string, activeStart:number|null, totalMs:number, sessions:{start:number,end:number}[]}} Student */
   /** @typedef {{id:string, name:string, students:Student[]}} ClassRoster */
@@ -79,14 +79,141 @@
     if (state.classes.length > 0 && !activeClass()) {
       state.activeClassId = state.classes[0].id;
     }
+    seedLogFromExistingState();
   }
 
   function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.error("Failed to save app state", e);
+      warnStorageFull();
+    }
   }
 
   function uid() {
     return (crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  }
+
+  // ---------- Running history log ----------
+  // A browser page can't append to a file on disk, so the durable running record lives here instead:
+  // an append-only, one-row-per-closed-session log kept in localStorage. Exports dump the *whole* log,
+  // so every export is a complete, growing copy and can safely replace the previous one.
+  // Rows are keyed by class|student|start-time and never mutated, which is what makes this append-safe:
+  // re-exporting an existing session is a no-op instead of a duplicate.
+  const LOG_KEY = "tappy.log.v1";
+  const LOG_SEEDED_KEY = "tappy.logSeeded.v1";
+  const MAX_LOG_ROWS = 10000; // ~1.2 MB; keeps the log comfortably inside the usual ~5 MB localStorage quota
+
+  let storageWarned = false;
+
+  function warnStorageFull() {
+    if (storageWarned) return;
+    storageWarned = true;
+    alert("Tappy couldn't save: this device's browser storage is full.\n\nExport the history CSV, then use \"Clear history\" (and delete any unused classes) to free up space.");
+  }
+
+  // Local-time YYYY-MM-DD, used for the log's date column and export filenames.
+  function localDateKey(ms) {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  // Keeps log rows single-line so the accumulated CSV stays human-readable when inspected by hand.
+  function singleLine(value) {
+    return String(value).replace(/[\r\n\t]+/g, " ").trim();
+  }
+
+  function readLog() {
+    try {
+      const raw = localStorage.getItem(LOG_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(r => r && typeof r === "object" &&
+        typeof r.key === "string" && typeof r.start === "number" && typeof r.end === "number");
+    } catch (e) {
+      console.error("Failed to read history log", e);
+      return [];
+    }
+  }
+
+  function writeLog(rows) {
+    // Oldest rows are dropped first (the array stays in append order). On a quota error we halve the log
+    // and retry, so a nearly-full device degrades by trimming history instead of losing the record outright.
+    let next = rows.length > MAX_LOG_ROWS ? rows.slice(rows.length - MAX_LOG_ROWS) : rows;
+    for (;;) {
+      try {
+        localStorage.setItem(LOG_KEY, JSON.stringify(next));
+        return next.length;
+      } catch (e) {
+        console.error("Failed to write history log", e);
+        warnStorageFull();
+        if (next.length === 0) return -1;
+        next = next.length > 1 ? next.slice(Math.floor(next.length / 2)) : [];
+      }
+    }
+  }
+
+  // Appends every closed session of a class to the log. Idempotent: returns the number of new rows added.
+  function appendLogRows(cls) {
+    if (!cls) return 0;
+    const rows = readLog();
+    const seen = new Set(rows.map(r => r.key));
+    const added = [];
+    for (const student of cls.students) {
+      student.sessions.forEach((sess, i) => {
+        // Keyed on the session's start time (not its index) so a second Reset Day on the same date
+        // can't be mistaken for a duplicate of an already-archived session.
+        const key = `${cls.id}|${student.id}|${sess.start}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        added.push({
+          key,
+          date: localDateKey(sess.start), // dated from when the student actually left, not from "today"
+          clsId: cls.id,
+          cls: singleLine(cls.name),
+          studentId: student.id,
+          name: singleLine(`${student.first} ${student.last}`),
+          n: i + 1,
+          start: sess.start,
+          end: sess.end
+        });
+      });
+    }
+    if (added.length === 0) return 0;
+    writeLog(rows.concat(added));
+    return added.length;
+  }
+
+  // The commit point: called before anything that clears live session data, so history survives it.
+  function commitDayToLog() {
+    const cls = activeClass();
+    if (!cls) return 0;
+    return appendLogRows(cls);
+  }
+
+  // One-time backfill for sessions recorded before the log existed. Harmless to re-run (appendLogRows
+  // dedupes), so the flag is only set once the write actually succeeds.
+  function seedLogFromExistingState() {
+    if (localStorage.getItem(LOG_SEEDED_KEY) === "1") return;
+    try {
+      for (const cls of state.classes) appendLogRows(cls);
+      localStorage.setItem(LOG_SEEDED_KEY, "1");
+    } catch (e) {
+      console.error("Failed to seed history log", e);
+    }
+  }
+
+  function updateLogSummary() {
+    const el = document.getElementById("report-log-summary");
+    const clearBtn = document.getElementById("btn-clear-history");
+    if (!el) return;
+    const rows = readLog();
+    const days = new Set(rows.map(r => r.date)).size;
+    el.textContent = rows.length === 0
+      ? "Running history: empty yet — sessions are archived automatically when you reset the day, export, or close the app."
+      : `Running history: ${rows.length} session${rows.length === 1 ? "" : "s"} across ${days} day${days === 1 ? "" : "s"}, stored on this device. Export it to keep a permanent copy.`;
+    if (clearBtn) clearBtn.disabled = rows.length === 0;
   }
 
   // ---------- Helpers ----------
@@ -283,6 +410,21 @@
 
   setInterval(tick, 1000);
 
+  // Safety net: a closed session is normally archived at a deliberate commit point (Reset Day, export,
+  // switching/deleting a class, closing the tab), but archiving every 5 minutes too means history survives
+  // a crash, force-quit, or a cleared/reloaded page mid-day. Cheap — one localStorage write per run, and
+  // only when something new actually closed.
+  function archiveHeartbeat() {
+    const cls = activeClass();
+    if (!cls) return;
+    if (appendLogRows(cls) > 0) updateLogSummary();
+  }
+  setInterval(archiveHeartbeat, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") archiveHeartbeat();
+  });
+  window.addEventListener("pagehide", archiveHeartbeat);
+
   // ---------- Actions ----------
   function toggleStudent(id) {
     const cls = activeClass();
@@ -360,6 +502,10 @@
   function resetDay() {
     const cls = activeClass();
     if (!cls) return;
+    // Archive first: this is the moment the day's sessions would otherwise be destroyed. A student still
+    // out right now is briefly dropped from the log by clearing activeStart — tapping them back in
+    // re-adds their session, and the periodic archive pass below catches it if they never come back.
+    const archived = commitDayToLog();
     for (const student of cls.students) {
       student.activeStart = null;
       student.totalMs = 0;
@@ -367,6 +513,13 @@
     }
     save();
     renderGrid();
+    updateLogSummary();
+    if (!locked) {
+      const msg = archived > 0
+        ? `New day started. ${archived} session${archived === 1 ? "" : "s"} added to the running history.\n\nUse "Export History (CSV)" in the Report window for a cumulative record you can save.`
+        : "New day started. No sessions were recorded today, so the running history is unchanged.";
+      alert(msg);
+    }
   }
 
   function clearRoster() {
@@ -393,15 +546,19 @@
 
   function switchClass(id) {
     if (!state.classes.some(c => c.id === id) || id === state.activeClassId) return;
+    commitDayToLog(); // archive the outgoing class's sessions before switching away from it
     state.activeClassId = id;
     save();
     renderClassUI();
     renderGrid();
     renderRosterList();
+    updateLogSummary();
   }
 
   function deleteActiveClass() {
     if (state.classes.length === 0) return;
+    // Must run while the class is still active/selected, so its sessions get archived before deletion.
+    commitDayToLog();
     const idx = state.classes.findIndex(c => c.id === state.activeClassId);
     state.classes.splice(idx, 1);
     const next = state.classes[Math.max(0, idx - 1)];
@@ -410,6 +567,7 @@
     renderClassUI();
     renderGrid();
     renderRosterList();
+    updateLogSummary();
   }
 
   // ---------- Roster modal ----------
@@ -664,14 +822,14 @@
   });
 
   document.getElementById("btn-clear-roster").addEventListener("click", () => {
-    if (confirm("Remove all students from the roster? This also erases their tracked time.")) {
+    if (confirm("Remove all students from the roster? Their sessions are kept in the running history, but the roster itself is erased.")) {
       clearRoster();
     }
   });
 
   // ---------- Reset day ----------
   document.getElementById("btn-reset").addEventListener("click", () => {
-    if (confirm("Reset all timers and cumulative totals for a new day? Names are kept.")) {
+    if (confirm("Start a new day? This archives today's sessions to the running history, then clears all timers and totals. Names are kept.")) {
       resetDay();
     }
   });
@@ -701,6 +859,7 @@
     if (!cls) return;
     reportBody.innerHTML = "";
     reportMeta.textContent = `${cls.name} — ${reportDateStr()} — Current time: ${formatClockTime(Date.now())}`;
+    updateLogSummary();
     const list = [...cls.students].filter(hasAbsence).sort((a, b) => totalFor(b) - totalFor(a));
     if (list.length === 0) {
       const tr = document.createElement("tr");
@@ -792,7 +951,67 @@
     return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
   }
 
+  function csvEscape(value) {
+    return `"${sanitizeCsvField(value).replace(/"/g, '""')}"`;
+  }
+
+  function csvText(rows) {
+    return rows.map(r => r.map(csvEscape).join(",")).join("\n");
+  }
+
+  // Serializes the entire running history (all classes, all days) — not just the current class's day —
+  // so each download is a complete replacement for the last one rather than a fragment to stitch together.
+  function buildHistoryCsv() {
+    const rows = [
+      ["Tappy Running History (cumulative — each export replaces the previous one)"],
+      ["Exported At", formatClockTime(Date.now()), localDateKey(Date.now())],
+      [],
+      ["Date", "Class", "Student", "Session #", "Out At (local time)", "In At (local time)",
+       "Duration (sec)", "Duration", "Out At (ISO 8601)", "In At (ISO 8601)"]
+    ];
+    // Sorted chronologically by session start, which is what keeps a hand-merged multi-device CSV tidy.
+    const log = readLog().sort((a, b) => a.start - b.start);
+    for (const r of log) {
+      const secs = Math.max(0, Math.round((r.end - r.start) / 1000));
+      rows.push([
+        r.date,
+        r.cls,
+        r.name,
+        r.n,
+        formatClockTime(r.start),
+        formatClockTime(r.end),
+        secs,
+        formatDuration(r.end - r.start),
+        new Date(r.start).toISOString(),
+        new Date(r.end).toISOString()
+      ]);
+    }
+    return csvText(rows);
+  }
+
+  function downloadCsv(csv, filename) {
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   document.getElementById("btn-export-csv").addEventListener("click", () => {
+    const cls = activeClass();
+    if (!cls) return;
+    // Export is a commit point: whatever is on screen is archived first, so the file always includes
+    // sessions that were never explicitly reset.
+    appendLogRows(cls);
+    updateLogSummary();
+    downloadCsv(buildHistoryCsv(), `tappy-history-${localDateKey(Date.now())}.csv`);
+  });
+
+  document.getElementById("btn-export-today-csv").addEventListener("click", () => {
     const cls = activeClass();
     if (!cls) return;
     const rows = [
@@ -818,16 +1037,21 @@
         sessionLog
       ]);
     }
-    const csv = rows.map(r => r.map(v => `"${sanitizeCsvField(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `tappy-report-${cls.name.replace(/[^a-z0-9]+/gi, "-")}-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadCsv(csvText(rows), `tappy-report-${cls.name.replace(/[^a-z0-9]+/gi, "-")}-${localDateKey(Date.now())}.csv`);
+  });
+
+  document.getElementById("btn-clear-history").addEventListener("click", () => {
+    const count = readLog().length;
+    if (count === 0) return;
+    if (!confirm(`Permanently delete all ${count} archived sessions from this device?\n\nThis cannot be undone — export the history CSV first if you need a copy.\n\nNote: sessions still showing on the grid today aren't history yet, so they'll be archived again. Use "Reset Day" first if you want a clean slate.`)) return;
+    try {
+      localStorage.removeItem(LOG_KEY);
+      localStorage.setItem(LOG_SEEDED_KEY, "1"); // nothing left to backfill; keeps a cleared log from reseeding
+    } catch (e) {
+      console.error("Failed to clear history log", e);
+      warnStorageFull();
+    }
+    updateLogSummary();
   });
 
   // ---------- Resize handling ----------
@@ -842,6 +1066,7 @@
   renderClassUI();
   renderGrid();
   renderRosterList();
+  updateLogSummary();
   btnLock.textContent = locked ? "🔒" : "🔓";
   btnLock.classList.toggle("locked", locked);
   btnLock.title = locked ? "Unlock controls" : "Lock controls";

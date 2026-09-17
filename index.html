@@ -36,7 +36,7 @@
     </div>
   </header>
 
-  <p class="offline-disclaimer">Tappy works offline. Your data is not saved online or synced between devices. Make sure to save a report daily if needed.</p>
+  <p class="offline-disclaimer">Tappy works offline. Your data is not saved online or synced between devices. Every session is archived automatically into a running history on this device — export it regularly to keep a permanent copy.</p>
 
   <main id="grid" class="grid" aria-label="Student grid">
     <div id="empty-state" class="empty-state"></div>
@@ -97,10 +97,15 @@
           <tbody id="report-body"></tbody>
         </table>
       </div>
+      <p id="report-log-summary" class="hint"></p>
       <div class="modal-actions">
-        <button id="btn-export-csv" class="btn" type="button">Export CSV</button>
+        <button id="btn-export-csv" class="btn" type="button" title="Every session ever recorded, across all classes and days">Export History (CSV)</button>
+        <button id="btn-export-today-csv" class="btn" type="button" title="Just today's totals for the current class">Export Today (CSV)</button>
         <button id="btn-print" class="btn" type="button">Print</button>
         <button class="btn" value="close">Close</button>
+      </div>
+      <div class="modal-actions modal-actions-secondary">
+        <button id="btn-clear-history" class="link-btn" type="button">Clear history</button>
       </div>
     </form>
   </dialog>
