@@ -1,18 +1,25 @@
 name: Publish Docker image
 
 # Builds a multi-arch image (amd64 + arm64) and pushes it to Docker Hub.
-# arm64 matters: a VPS may be Ampere/ARM, and Apple Silicon users may want to
-# run it locally.
+#
+# VERSIONING — one source of truth
+# --------------------------------
+# The image tag comes from APP_VERSION in app.js, which is bumped with
+#   scripts/bump-version.sh 31
+# That script also updates CACHE_NAME in service-worker.js, so the app version,
+# the service-worker cache version and the Docker tag can never drift apart.
+#
+# Tags produced for APP_VERSION = "v31":
+#   latest      — only from the default branch (main), so `latest` always means
+#                 "the released version"
+#   beta        — from the beta branch, so beta testers get a moving target
+#   v31         — the exact app version, on every branch. Pin this in
+#                 production: it never moves.
+#   sha-abc1234 — the exact commit, for debugging
 #
 # Required repository secrets:
 #   DOCKERHUB_USERNAME  — Docker Hub account name
 #   DOCKERHUB_TOKEN     — Docker Hub access token (Account Settings -> Security)
-#
-# Tags produced:
-#   latest            — on pushes to main
-#   beta              — on pushes to the beta branch
-#   v1.2.3, 1.2       — on git tags like v1.2.3
-#   sha-<short>       — always
 
 on:
   push:
@@ -35,6 +42,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Fail fast if APP_VERSION and CACHE_NAME have drifted apart. A mismatch
+      # means browsers would keep serving stale files, which is worse than a
+      # failed build.
+      - name: Verify version strings are in sync
+        run: |
+          APP=$(sed -n 's/.*APP_VERSION = "v\([0-9][0-9.]*\)".*/\1/p' app.js | head -1)
+          CACHE=$(sed -n 's/.*CACHE_NAME = "tappy-cache-v\([0-9][0-9.]*\)".*/\1/p' service-worker.js | head -1)
+          echo "app.js APP_VERSION       = v$APP"
+          echo "service-worker CACHE_NAME = v$CACHE"
+          if [ -z "$APP" ] || [ -z "$CACHE" ]; then
+            echo "::error::Could not read a version from app.js or service-worker.js"
+            exit 1
+          fi
+          if [ "$APP" != "$CACHE" ]; then
+            echo "::error::Version mismatch: app.js is v$APP but service-worker.js is v$CACHE. Run scripts/bump-version.sh to fix."
+            exit 1
+          fi
+          echo "VERSION=$APP" >> "$GITHUB_ENV"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -56,11 +82,11 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
+            type=raw,value=v${{ env.VERSION }}
             type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -90,10 +116,14 @@ jobs:
             echo "$path -> $code"
             [ "$code" = "200" ] || exit 1
           done
+          # The served app must report the version we just tagged.
+          served=$(curl -s http://127.0.0.1:8080/app.js | sed -n 's/.*APP_VERSION = "v\([0-9][0-9.]*\)".*/\1/p' | head -1)
+          echo "served version: v$served (expected v$VERSION)"
+          [ "$served" = "$VERSION" ] || { echo "::error::Served version v$served != expected v$VERSION"; exit 1; }
           # The container must not have written anything: this is the guarantee
           # that no data is stored on the host.
           if [ -n "$(docker diff tappy-ci)" ]; then
-            echo "ERROR: container wrote to its filesystem:"; docker diff tappy-ci; exit 1
+            echo "::error::Container wrote to its filesystem:"; docker diff tappy-ci; exit 1
           fi
-          echo "OK: stateless, all assets served"
+          echo "OK: stateless, all assets served, version v$VERSION"
           docker rm -f tappy-ci

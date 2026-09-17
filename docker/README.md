@@ -80,15 +80,15 @@ Being explicit, because it matters for a classroom device:
 ## Quick start
 
 ```bash
-# 1. Pull the image
-docker pull af416/tappy:latest
+# 1. Pull the image. Pin the version in production — see "Versioning" below.
+docker pull af416/tappy:v31
 
 # 2. Run it (no ports published — the tunnel reaches it over the network)
 docker run -d --name tappy --restart unless-stopped \
   --read-only --tmpfs /var/cache/nginx --tmpfs /tmp \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --network your-tunnel-network \
-  af416/tappy:latest
+  af416/tappy:v31
 ```
 
 Then point your tunnel's public hostname at `http://tappy:8080`.
@@ -99,6 +99,52 @@ Or use the compose file in this directory:
 cd docker
 docker compose up -d
 ```
+
+---
+
+## Versioning
+
+The image tag is derived from `APP_VERSION` in `app.js`, so there is exactly one
+place to change a version.
+
+| Tag | Moves? | Use it for |
+|---|---|---|
+| `v31` | ❌ never | **Production.** A deploy can't surprise you. |
+| `latest` | ✅ | The released version (published from `main` only). |
+| `beta` | ✅ | Beta testing (published from the `beta` branch). |
+| `sha-abc1234` | ❌ never | Debugging a specific commit. |
+
+### Cutting a new version
+
+```bash
+./scripts/bump-version.sh 32     # bumps app.js + service-worker.js together
+git add app.js service-worker.js
+git commit -m "Bump version to v32"
+git push beta beta               # or: git push origin main
+```
+
+The workflow then publishes `af416/tappy:v32` automatically, plus `beta` (or
+`latest` when pushed to `main`).
+
+`bump-version.sh` updates **both** version strings, because they must stay in
+lockstep:
+
+- `app.js` → `APP_VERSION` — shown in the footer
+- `service-worker.js` → `CACHE_NAME` — forces browsers to fetch new files
+
+If they drift apart, the service worker keeps serving stale files to anyone who
+has already visited. The publish workflow **fails the build** if they disagree,
+so this can't slip through.
+
+### Updating a deployment
+
+```bash
+# Edit the pinned tag in docker-compose.yml, then:
+docker compose pull && docker compose up -d
+```
+
+The app shell is served with `Cache-Control: no-cache`, so browsers pick up the
+new version on their next load without a hard refresh.
 
 ---
 
@@ -196,6 +242,7 @@ This is invisible to users — Cloudflare maps the public hostname to `tappy:808
 ## Updating
 
 ```bash
+# Edit the pinned tag in docker-compose.yml, then:
 docker compose pull && docker compose up -d
 ```
 
@@ -249,12 +296,18 @@ Add two repository secrets (**Settings → Secrets and variables → Actions**):
 
 | Secret | Where to get it |
 |---|---|
-| `DOCKERHUB_USERNAME` | Your Docker Hub username |
-| `DOCKERHUB_TOKEN` | Docker Hub → Account Settings → Security → New Access Token |
+| `DOCKERHUB_USERNAME` | Your Docker Hub username (`af416`) |
+| `DOCKERHUB_TOKEN` | Docker Hub → Account Settings → Security → New Access Token (needs **Read & Write**) |
 
-Tags produced: `latest` (main), `beta` (beta branch), `1.2.3` / `1.2` (git tags),
-and `sha-<short>` always. Pull requests build without pushing, and the workflow
-fails if the container writes to its filesystem or any asset returns non-200.
+> **Note:** the secrets must exist on whichever repository the branch is pushed
+> to. `beta` is pushed to `genstogata/tappy-beta`, so that repo needs them too —
+> otherwise the publish step fails with an auth error.
+
+The workflow fails the build if:
+- `APP_VERSION` and `CACHE_NAME` disagree,
+- any asset returns non-200,
+- the served version doesn't match the tag being published, or
+- the container wrote to its filesystem.
 
 ---
 

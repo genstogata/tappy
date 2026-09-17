@@ -23,6 +23,18 @@ COPY index.html app.js styles.css service-worker.js manifest.json LICENSE /usr/s
 COPY icons/ /usr/share/nginx/html/icons/
 COPY sample-data/ /usr/share/nginx/html/sample-data/
 
+# Normalise permissions. COPY preserves the source file modes, so a file that
+# happens to be 0600 on the build machine (e.g. after an editor or script
+# rewrote it) would be unreadable to the unprivileged nginx user (uid 101) and
+# serve 403 Forbidden. Force world-readable files and traversable directories.
+#
+# This must run as root: the base image's default user (101) does not own the
+# copied files and cannot chmod them. The final USER restores the unprivileged
+# user so the running container is still hardened.
+USER root
+RUN chmod -R a+rX /usr/share/nginx/html
+USER 101
+
 EXPOSE 8080
 
 # busybox wget ships with Alpine, so no extra packages are needed.

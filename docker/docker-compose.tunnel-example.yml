@@ -16,7 +16,8 @@
 
 services:
   tappy:
-    image: af416/tappy:latest
+    # Pin the exact app version in production (see docker-compose.yml).
+    image: af416/tappy:v31
     container_name: tappy
     restart: unless-stopped
     read_only: true
