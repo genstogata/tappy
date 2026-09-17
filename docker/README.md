@@ -140,12 +140,40 @@ network. Nothing is exposed to the internet directly.
 ### Option B — a dedicated tunnel for Tappy
 
 Use `docker-compose.tunnel-example.yml`, which runs its own `cloudflared`
-alongside Tappy. Set `TUNNEL_TOKEN` in a `.env` file next to it:
+alongside Tappy. The tunnel token is read from a `.env` file, so start by
+copying the template:
 
 ```bash
-echo "TUNNEL_TOKEN=your-token-here" > .env
+cd docker
+cp sample.env .env
+```
+
+Then edit `.env` and replace the placeholder with your real token:
+
+```
+TUNNEL_TOKEN=eyJhIjoi...your-actual-token...
+```
+
+Get it from **Cloudflare dashboard → Zero Trust → Networks → Tunnels → your
+tunnel → Install connector** (the token shown for a Docker connector). Finally:
+
+```bash
 docker compose -f docker-compose.tunnel-example.yml up -d
 ```
+
+Docker Compose reads `.env` automatically from the directory containing the
+compose file, which is what makes `${TUNNEL_TOKEN}` resolve. If you forget to
+create it, Compose stops with a clear message rather than starting a broken
+tunnel:
+
+```
+error: required variable TUNNEL_TOKEN is missing a value: TUNNEL_TOKEN is not set
+- copy sample.env to .env and add your tunnel token
+```
+
+> **`.env` is a credential — never commit it.** It is already listed in the
+> repository's `.gitignore`. Only `sample.env` (the placeholder template) is
+> tracked in git.
 
 ---
 

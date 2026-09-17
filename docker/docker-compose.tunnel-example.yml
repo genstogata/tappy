@@ -5,9 +5,14 @@
 # container, ignore this file and just join Tappy to that container's network
 # (see README.md, "Attaching to an existing tunnel").
 #
-# Replace TUNNEL_TOKEN with the token from
+# Setup:
+#   cp sample.env .env      # then edit .env and paste your tunnel token
+#   docker compose -f docker-compose.tunnel-example.yml up -d
+#
+# Get the token from:
 #   Cloudflare dashboard -> Zero Trust -> Networks -> Tunnels -> your tunnel
-# and set the tunnel's public hostname to point at http://tappy:80
+# and set the tunnel's public hostname to point at http://tappy:8080
+# (Type HTTP — Cloudflare terminates TLS at its edge.)
 
 services:
   tappy:
@@ -29,7 +34,9 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared-tappy
     restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    # TUNNEL_TOKEN is read from the .env file next to this compose file.
+    # Compose fails fast with a clear message if it is unset.
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN:?TUNNEL_TOKEN is not set - copy sample.env to .env and add your tunnel token}
     depends_on:
       - tappy
     networks:
