@@ -51,7 +51,7 @@ Tappy is also published as a Docker image, for running on your own server (e.g. 
 docker run -d --name tappy --restart unless-stopped \
   --read-only --tmpfs /var/cache/nginx --tmpfs /tmp \
   --security-opt no-new-privileges:true --cap-drop ALL \
-  -p 127.0.0.1:8080:8080 genstogata/tappy:latest
+  -p 127.0.0.1:8080:8080 af416/tappy:latest
 ```
 
 The container serves files and **stores no data** — no database, no volume, no server-side state. Rosters, timers and history all live in the browser on the teacher's device. It runs with a read-only filesystem and all capabilities dropped, so it *cannot* write to the host.

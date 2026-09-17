@@ -15,7 +15,7 @@
 
 services:
   tappy:
-    image: genstogata/tappy:latest
+    image: af416/tappy:latest
     # To build locally instead of pulling from Docker Hub, comment out `image:`
     # above and uncomment the next line (run from the repository root):
     # build:

@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: genstogata/tappy
+  IMAGE_NAME: af416/tappy
 
 jobs:
   build:

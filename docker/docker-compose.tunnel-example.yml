@@ -11,7 +11,7 @@
 
 services:
   tappy:
-    image: genstogata/tappy:latest
+    image: af416/tappy:latest
     container_name: tappy
     restart: unless-stopped
     read_only: true

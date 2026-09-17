@@ -81,14 +81,14 @@ Being explicit, because it matters for a classroom device:
 
 ```bash
 # 1. Pull the image
-docker pull genstogata/tappy:latest
+docker pull af416/tappy:latest
 
 # 2. Run it (no ports published — the tunnel reaches it over the network)
 docker run -d --name tappy --restart unless-stopped \
   --read-only --tmpfs /var/cache/nginx --tmpfs /tmp \
   --security-opt no-new-privileges:true --cap-drop ALL \
   --network your-tunnel-network \
-  genstogata/tappy:latest
+  af416/tappy:latest
 ```
 
 Then point your tunnel's public hostname at `http://tappy:8080`.
