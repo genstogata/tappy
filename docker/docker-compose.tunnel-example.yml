@@ -1,0 +1,40 @@
+# Example: Tappy + a Cloudflare Tunnel in one compose file.
+#
+# Use this if you would rather run a dedicated tunnel for Tappy than attach it
+# to a tunnel you already run. If you already have a working cloudflared
+# container, ignore this file and just join Tappy to that container's network
+# (see README.md, "Attaching to an existing tunnel").
+#
+# Replace TUNNEL_TOKEN with the token from
+#   Cloudflare dashboard -> Zero Trust -> Networks -> Tunnels -> your tunnel
+# and set the tunnel's public hostname to point at http://tappy:80
+
+services:
+  tappy:
+    image: genstogata/tappy:latest
+    container_name: tappy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - tappy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-tappy
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    depends_on:
+      - tappy
+    networks:
+      - tappy
+
+networks:
+  tappy:
+    name: tappy
