@@ -110,9 +110,24 @@ place to change a version.
 | Tag | Moves? | Use it for |
 |---|---|---|
 | `v31` | ❌ never | **Production.** A deploy can't surprise you. |
-| `latest` | ✅ | The released version (published from `main` only). |
+| `latest` | ✅ | Whatever was pushed most recently to the default branch. |
 | `beta` | ✅ | Beta testing (published from the `beta` branch). |
 | `sha-abc1234` | ❌ never | Debugging a specific commit. |
+
+> **Which branch feeds `latest`?** It is the *default branch of the repository
+> the workflow runs in*, which differs per repo:
+>
+> | Repo | Default branch | Pushing this publishes `latest` |
+> |---|---|---|
+> | `genstogata/tappy` | `main` | `main` |
+> | `genstogata/tappy-beta` | `beta` | `beta` |
+>
+> So today, pushing `beta` to `tappy-beta` publishes `latest` (and `beta`, and
+> `v31`). Once the code is merged to `main` in `genstogata/tappy`, pushing
+> `main` there will publish `latest` instead. Either way `latest` always points
+> at the newest build from that repo's default branch.
+>
+> If you want a deploy that never changes under you, pin `v31`.
 
 ### Cutting a new version
 

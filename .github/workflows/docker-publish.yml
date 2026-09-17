@@ -10,8 +10,10 @@ name: Publish Docker image
 # the service-worker cache version and the Docker tag can never drift apart.
 #
 # Tags produced for APP_VERSION = "v31":
-#   latest      — only from the default branch (main), so `latest` always means
-#                 "the released version"
+#   latest      — from the DEFAULT BRANCH of whichever repo this runs in.
+#                 Note this is per-repo: genstogata/tappy defaults to `main`,
+#                 genstogata/tappy-beta defaults to `beta`. So pushing `beta`
+#                 to tappy-beta DOES publish `latest`.
 #   beta        — from the beta branch, so beta testers get a moving target
 #   v31         — the exact app version, on every branch. Pin this in
 #                 production: it never moves.
