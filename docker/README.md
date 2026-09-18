@@ -30,9 +30,10 @@ docker inspect tappy --format '{{.HostConfig.ReadonlyRootfs}}'
 ```
 
 The compose file sets `read_only: true`, drops all Linux capabilities, and
-forbids privilege escalation. If Tappy ever tried to persist something
-server-side, it would fail loudly instead of quietly accumulating student data
-on your VPS.
+forbids privilege escalation. It also caps the container at 64 MB of memory
+(no swap) and 64 processes, so a runaway worker fails fast instead of eating the
+VPS. If Tappy ever tried to persist something server-side, it would fail loudly
+instead of quietly accumulating student data on your VPS.
 
 ### What the VPS *does* see
 
@@ -88,6 +89,7 @@ docker pull af416/tappy:v32
 docker run -d --name tappy --restart unless-stopped \
   --read-only --tmpfs /var/cache/nginx --tmpfs /tmp \
   --security-opt no-new-privileges:true --cap-drop ALL \
+  --memory 64m --memory-swap 64m --pids-limit 64 \
   --network your-tunnel-network \
   af416/tappy:v32
 ```
@@ -279,6 +281,10 @@ curl -sI https://tappy.example.com/ | grep -iE 'content-security|x-frame|referre
 
 # The app is reachable and is the expected version
 curl -s https://tappy.example.com/app.js | grep -o 'APP_VERSION = "v[0-9]*"'
+
+# Resource limits are in force, and actual usage is far below them
+docker inspect tappy --format 'mem={{.HostConfig.Memory}} swap={{.HostConfig.MemorySwap}} pids={{.HostConfig.PidsLimit}}'
+docker stats --no-stream tappy
 ```
 
 ---
@@ -291,7 +297,8 @@ From the repository root:
 docker build -t tappy:local .
 docker run -d --name tappy-local -p 127.0.0.1:8080:8080 \
   --read-only --tmpfs /var/cache/nginx --tmpfs /tmp \
-  --security-opt no-new-privileges:true --cap-drop ALL tappy:local
+  --security-opt no-new-privileges:true --cap-drop ALL \
+  --memory 64m --memory-swap 64m --pids-limit 64 tappy:local
 ```
 
 Then open <http://127.0.0.1:8080>.
@@ -332,6 +339,7 @@ The workflow fails the build if:
 | Symptom | Cause / fix |
 |---|---|
 | Container exits, log shows `chown ... Operation not permitted` | You are using `nginx:alpine` instead of `nginx-unprivileged`, or you removed `cap_drop: ALL`'s companion tmpfs mounts. Use the provided Dockerfile. |
+| Container restarts repeatedly, `docker inspect` shows `OOMKilled: true` | The 64 MB `mem_limit` was hit. Normal operation uses well under 10 MB, so this means something is wrong — check `docker stats tappy` before raising the limit. |
 | Tunnel returns 502 | Wrong port. The container listens on **8080**, not 80. |
 | App loads but no offline mode / no install prompt | Not a secure context. Use the HTTPS hostname, not a bare IP. |
 | Data "disappeared" after moving to a new URL | Expected — storage is origin-scoped. Export from the old URL and import at the new one. |

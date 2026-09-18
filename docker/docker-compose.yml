@@ -16,8 +16,7 @@
 services:
   tappy:
     # Pin the exact app version in production so a deploy never changes under
-    # you. `latest` tracks the released version and `beta` the beta branch;
-    # both move, so prefer a pinned tag like :v32 for a classroom device.
+    # you. `latest` tracks the released version; so prefer a pinned tag like :v32 for a classroom device.
     # Available tags: https://hub.docker.com/r/af416/tappy/tags
     image: af416/tappy:v32
     # To build locally instead of pulling from Docker Hub, comment out `image:`
@@ -45,6 +44,18 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+    # --- Resource limits ---------------------------------------------------
+    # nginx serving a handful of static files needs very little: it idles
+    # around 5-10 MB and only grows with concurrent connections. 64 MB is
+    # generous headroom while still capping a runaway worker well below the
+    # smallest VPS. memswap_limit matches mem_limit so the container can never
+    # fall back to swap and thrash the host instead of failing fast.
+    mem_limit: 64m
+    memswap_limit: 64m
+    # A static file server has no reason to fork. This bounds a fork bomb or a
+    # compromised worker to a handful of processes.
+    pids_limit: 64
 
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]

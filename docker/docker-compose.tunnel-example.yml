@@ -28,6 +28,10 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # Static files only — see docker-compose.yml for the reasoning.
+    mem_limit: 64m
+    memswap_limit: 64m
+    pids_limit: 64
     networks:
       - tappy
 
@@ -40,6 +44,12 @@ services:
     command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN:?TUNNEL_TOKEN is not set - copy sample.env to .env and add your tunnel token}
     depends_on:
       - tappy
+    # cloudflared is a Go binary that holds a few long-lived QUIC connections;
+    # it typically sits around 30-50 MB. 128 MB leaves room for connection
+    # churn without letting it grow unbounded on a small VPS.
+    mem_limit: 128m
+    memswap_limit: 128m
+    pids_limit: 128
     networks:
       - tappy
 
