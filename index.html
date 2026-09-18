@@ -112,6 +112,23 @@
     </form>
   </dialog>
 
+  <!-- Edit Session Modal -->
+  <dialog id="modal-edit-session" class="modal">
+    <form method="dialog" class="modal-content">
+      <h2>Edit Time In / Time Out</h2>
+      <p id="edit-session-meta" class="hint"></p>
+      <div class="row">
+        <button id="btn-add-session-row" class="btn" type="button">+ Add Missing Session</button>
+      </div>
+      <div id="edit-session-rows" class="edit-session-rows"></div>
+      <p class="hint">Tip: Leave the "In" value blank in the Current row to keep the student marked as currently out.</p>
+      <div class="modal-actions">
+        <button class="btn" value="cancel" type="submit">Cancel</button>
+        <button id="btn-save-session-edits" class="btn" type="button">Save Changes</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- PIN Modal -->
   <dialog id="modal-pin" class="modal modal-pin">
     <form method="dialog" class="modal-content">

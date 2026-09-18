@@ -1144,9 +1144,148 @@
   const modalReport = document.getElementById("modal-report");
   const reportBody = document.getElementById("report-body");
   const reportMeta = document.getElementById("report-meta");
+  const modalEditSession = document.getElementById("modal-edit-session");
+  const editSessionMeta = document.getElementById("edit-session-meta");
+  const editSessionRows = document.getElementById("edit-session-rows");
+  const btnSaveSessionEdits = document.getElementById("btn-save-session-edits");
+  const btnAddSessionRow = document.getElementById("btn-add-session-row");
+  let editingStudentId = "";
 
   function reportDateStr() {
     return new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  }
+
+  function toDateTimeLocalValue(ms) {
+    const d = new Date(ms);
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    const h = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    const s = String(d.getSeconds()).padStart(2, "0");
+    return `${y}-${mo}-${da}T${h}:${mi}:${s}`;
+  }
+
+  function parseDateTimeLocalValue(value) {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : NaN;
+  }
+
+  function recalcStudentTotal(student) {
+    student.totalMs = student.sessions.reduce((sum, sess) => sum + Math.max(0, sess.end - sess.start), 0);
+  }
+
+  function sessionEditorRowHtml(label, outMs, inMs, kind, index) {
+    const outValue = Number.isFinite(outMs) ? toDateTimeLocalValue(outMs) : "";
+    const inValue = Number.isFinite(inMs) ? toDateTimeLocalValue(inMs) : "";
+    return `
+      <div class="edit-session-row" data-kind="${kind}" data-index="${index}">
+        <div class="edit-session-label">${label}</div>
+        <label>Out <input type="datetime-local" step="1" data-field="out" value="${outValue}"></label>
+        <label>In <input type="datetime-local" step="1" data-field="in" value="${inValue}"></label>
+      </div>
+    `;
+  }
+
+  function openSessionEditor(studentId) {
+    const cls = activeClass();
+    if (!cls || !modalEditSession || !editSessionRows || !editSessionMeta) return;
+    const student = cls.students.find(s => s.id === studentId);
+    if (!student) return;
+
+    editingStudentId = student.id;
+    editSessionMeta.textContent = `${student.first} ${student.last} — adjust Out/In times manually.`;
+
+    const rows = [];
+    student.sessions.forEach((sess, i) => {
+      rows.push(sessionEditorRowHtml(`#${i + 1}`, sess.start, sess.end, "session", i));
+    });
+
+    if (student.activeStart) {
+      rows.push(sessionEditorRowHtml("Current", student.activeStart, NaN, "active", "active"));
+    }
+
+    editSessionRows.innerHTML = rows.length
+      ? rows.join("")
+      : '<p class="hint">No sessions to edit yet.</p>';
+
+    modalEditSession.showModal();
+  }
+
+  function saveSessionEdits() {
+    const cls = activeClass();
+    if (!cls || !editingStudentId) return;
+    const student = cls.students.find(s => s.id === editingStudentId);
+    if (!student) return;
+
+    const sessionRows = [...editSessionRows.querySelectorAll('.edit-session-row[data-kind="session"], .edit-session-row[data-kind="new"]')];
+    const activeRow = editSessionRows.querySelector('.edit-session-row[data-kind="active"]');
+    const nextSessions = [];
+
+    for (const row of sessionRows) {
+      const kind = row.dataset.kind || "session";
+      const outValue = row.querySelector('input[data-field="out"]').value;
+      const inValue = row.querySelector('input[data-field="in"]').value;
+      if (kind === "new" && !outValue.trim() && !inValue.trim()) {
+        continue;
+      }
+      const start = parseDateTimeLocalValue(outValue);
+      const end = parseDateTimeLocalValue(inValue);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) {
+        alert("Please enter valid Out and In times for every session.");
+        return;
+      }
+      if (end < start) {
+        alert("In time cannot be earlier than Out time.");
+        return;
+      }
+      nextSessions.push({ start, end });
+    }
+
+    student.activeStart = null;
+    if (activeRow) {
+      const outValue = activeRow.querySelector('input[data-field="out"]').value;
+      const inValue = activeRow.querySelector('input[data-field="in"]').value;
+      const start = parseDateTimeLocalValue(outValue);
+      if (!Number.isFinite(start)) {
+        alert("Please enter a valid Out time for the current session.");
+        return;
+      }
+      if (inValue.trim()) {
+        const end = parseDateTimeLocalValue(inValue);
+        if (!Number.isFinite(end)) {
+          alert("Please enter a valid In time for the current session.");
+          return;
+        }
+        if (end < start) {
+          alert("In time cannot be earlier than Out time.");
+          return;
+        }
+        nextSessions.push({ start, end });
+      } else {
+        student.activeStart = start;
+      }
+    }
+
+    student.sessions = nextSessions.sort((a, b) => a.start - b.start);
+    recalcStudentTotal(student);
+    save();
+    tick();
+    renderReport();
+    modalEditSession.close();
+  }
+
+  function addMissingSessionRow() {
+    if (!editSessionRows) return;
+    const count = editSessionRows.querySelectorAll('.edit-session-row[data-kind="new"]').length;
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = sessionEditorRowHtml(`New ${count + 1}`, NaN, NaN, "new", `new-${Date.now()}-${count}`);
+    const node = wrapper.firstElementChild;
+    if (node) {
+      editSessionRows.appendChild(node);
+      const outInput = node.querySelector('input[data-field="out"]');
+      if (outInput) outInput.focus();
+    }
   }
 
   // Renders each tap-out/tap-in pair as local clock times, e.g. "Out at 1:45:02 PM → In at 1:52:30 PM (7:28)".
@@ -1185,7 +1324,12 @@
         <td>${student.sessions.length}</td>
         <td>${student.activeStart ? formatDuration(elapsed) : "—"}</td>
         <td>${formatDuration(totalFor(student))}</td>
-        <td class="col-details"><button type="button" class="btn-details-toggle" aria-expanded="false">Details ▾</button></td>
+        <td class="col-details">
+          <div class="report-row-actions">
+            <button type="button" class="btn-details-toggle" aria-expanded="false">Details ▾</button>
+            <button type="button" class="btn-details-toggle btn-edit-session">Edit</button>
+          </div>
+        </td>
       `;
       reportBody.appendChild(tr);
 
@@ -1201,6 +1345,10 @@
         e.currentTarget.setAttribute("aria-expanded", String(willExpand));
         e.currentTarget.textContent = willExpand ? "Details ▴" : "Details ▾";
       });
+
+      tr.querySelector(".btn-edit-session").addEventListener("click", () => {
+        openSessionEditor(student.id);
+      });
     }
   }
 
@@ -1208,6 +1356,13 @@
     renderReport();
     modalReport.showModal();
   });
+
+  if (btnSaveSessionEdits) {
+    btnSaveSessionEdits.addEventListener("click", saveSessionEdits);
+  }
+  if (btnAddSessionRow) {
+    btnAddSessionRow.addEventListener("click", addMissingSessionRow);
+  }
 
   document.getElementById("btn-print").addEventListener("click", () => {
     window.print();
